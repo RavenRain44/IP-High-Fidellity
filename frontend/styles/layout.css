@@ -5,7 +5,7 @@ body{line-height:1.4;font-size:13px}
 h1{font-size:22px;line-height:1.2;letter-spacing:-.5px}h2{font-size:16px}h3{font-size:14px}
 
 /* Sidebar: white; accents only as dividers */
-.side{width:204px;background:#fff;color:var(--navy);border-right:2px solid var(--gold)}
+.side{overflow-y:auto;width:204px;background:#fff;color:var(--navy);border-right:2px solid var(--gold)}
 .brand{padding:12px 14px;gap:10px;border-bottom:2px solid var(--gold)}
 .brand-mark{width:36px;height:26px;border-radius:5px;background:#fff;border:1px solid var(--navy);color:var(--navy);font-size:12px}
 .brand strong{color:var(--navy);font-size:18px}.brand .dot{color:var(--navy)}.brand small{color:var(--muted);font-size:9px}
