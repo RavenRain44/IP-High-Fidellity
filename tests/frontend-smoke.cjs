@@ -5,7 +5,8 @@ const path = require('path');
 const vm = require('vm');
 const root = path.resolve(__dirname, '..');
 const html = fs.readFileSync(path.join(root,'frontend','index.html'),'utf8');
-const scriptNames = [...html.matchAll(/<script defer src="\.\/scripts\/([^"]+)"/g)].map(x=>x[1]);
+// km-*.js are browser DOM enhancers (need a real DOM); only the numbered app scripts run here.
+const scriptNames = [...html.matchAll(/<script defer src="\.\/scripts\/(\d[^"]+)"/g)].map(x=>x[1]);
 if (scriptNames.length !== 11) throw Error(`Expected 11 script files, found ${scriptNames.length}`);
 const elements = Object.fromEntries(['app','overlay','toasts'].map(id=>[id,{innerHTML:'',appendChild(){}}]));
 const listeners = {};
