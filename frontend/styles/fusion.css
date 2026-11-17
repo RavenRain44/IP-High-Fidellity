@@ -1,0 +1,362 @@
+/* LuMaCo × Microsoft 365 mail + Salesforce Lightning CRM (mockup layer, loaded after restyle.css).
+   Source: IP-High-Fidelity docs/BRIEF_V2.md §8 and src/ui/tokens.css. Original assets only.
+   Kept from earlier rounds: dense layout, white sidebar whose gold appears only as divider lines. */
+:root{
+  --fx-accent:#0f6cbd;--fx-accent-hover:#115ea3;--fx-accent-press:#0c3b5e;--fx-sel:#ebf3fc;--fx-sel-line:#b4d6fa;
+  --fx-bg:#faf9f8;--fx-surface:#fff;--fx-line:#e1dfdd;--fx-line-soft:#edebe9;--fx-hover:#f3f2f1;
+  --fx-text:#242424;--fx-muted:#605e5c;--fx-appbar:#172c47;
+  --navy:#242424;--navy2:#424242;--gold:var(--fx-accent);--gold-soft:var(--fx-sel);
+  --ink:var(--fx-text);--muted:var(--fx-muted);--line:var(--fx-line);--background:var(--fx-bg);--paper:#fff;
+  --red:#c50f1f;--red-soft:#fdf3f4;--green:#107c10;--green-soft:#f1faf1;
+  --round:4px;--shadow:0 1px 2px rgba(0,0,0,.06),0 0 1px rgba(0,0,0,.04);
+}
+html,body{font-family:"Segoe UI","Segoe UI Variable",system-ui,-apple-system,Roboto,"Helvetica Neue",Arial,sans-serif;color:var(--fx-text);background:var(--fx-bg)}
+h1,h2,h3{letter-spacing:0}
+h1{font-weight:600}h2{font-weight:600}
+.eyebrow{color:var(--fx-muted);font-weight:600;letter-spacing:.6px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--fx-accent);outline-offset:1px}
+a,.section-title a{color:var(--fx-accent)!important;font-weight:600}
+
+/* ---------- App bar (Microsoft): dark brand bar, app launcher, central search ---------- */
+.topbar{background:var(--fx-appbar);height:48px;justify-content:flex-start;gap:12px;border-bottom:0}
+.topbar::before{content:"";flex:none;width:20px;height:20px;opacity:.9;background:center/20px 20px no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'><circle cx='4' cy='4' r='1.6'/><circle cx='10' cy='4' r='1.6'/><circle cx='16' cy='4' r='1.6'/><circle cx='4' cy='10' r='1.6'/><circle cx='10' cy='10' r='1.6'/><circle cx='16' cy='10' r='1.6'/><circle cx='4' cy='16' r='1.6'/><circle cx='10' cy='16' r='1.6'/><circle cx='16' cy='16' r='1.6'/></svg>")}
+.topbar>div:first-child{flex:none}
+.topbar .top-title{font-size:14px;font-weight:600}
+.topbar .top-sub{color:#b9c4d2}
+.top-actions{flex:1;justify-content:flex-end;min-width:0}
+.top-actions .lw-top-record{background:transparent;border:1px solid transparent;color:#fff;font-weight:600;margin:0}
+.top-actions .lw-top-record:hover{background:rgba(255,255,255,.12)}
+.top-actions .lw-top-record[data-nav="search-all"]{order:-1;margin-right:auto;margin-left:8px;width:min(340px,32vw);justify-content:flex-start;gap:8px;padding:0 10px;background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.18);color:#dfe6ee;font-weight:400}
+.top-actions .lw-top-record[data-nav="search-all"]::before{content:"";width:15px;height:15px;flex:none;background:center/15px no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.8-3.8'/></svg>")}
+.top-actions .lw-top-record[data-nav="search-all"]:hover{background:rgba(255,255,255,.2)}
+.top-actions .top-status{border-color:rgba(255,255,255,.25);color:#dfe6ee;border-radius:4px}
+.top-actions .top-status b{color:#fff}
+.topbar .top-btn{background:#fff;border-color:#fff;color:var(--fx-appbar);border-radius:4px;font-weight:600}
+.topbar .top-btn:hover{background:#e8edf3}
+@media(max-width:1200px){.top-actions .top-status{display:none}}
+@media(max-width:1100px){.top-actions .lw-top-record[data-nav="search-all"]{width:200px}}
+
+/* ---------- Sidebar: kept white with thin gold group lines; Fluent-style items ---------- */
+.nav button,.lw-nav button{border-radius:4px;color:var(--fx-text);font-weight:400}
+.nav button .icon,.lw-nav button .icon{color:var(--fx-muted)}
+.nav button:hover,.lw-nav button:hover{background:var(--fx-hover)}
+.nav button.active,.lw-nav button.active{background:#edebe9;font-weight:600;color:var(--fx-text)}
+.nav button.active .icon{color:var(--fx-text)}
+.nav .count,.nav button.active .count{border-color:#c8c6c4;color:var(--fx-text);border-radius:10px}
+.brand-mark{background:var(--fx-appbar);border-radius:4px}
+.brand strong,.brand .dot{color:var(--fx-text)}
+.side .lw-record,.side .btn.primary{border-color:#d1d1d1;color:var(--fx-text);border-radius:4px}
+
+/* ---------- Buttons (Lightning neutral / brand) ---------- */
+.btn{border:1px solid #d1d1d1;border-radius:4px;background:#fff;color:var(--fx-accent);font-weight:600}
+.btn:hover{background:var(--fx-hover);border-color:#c7c7c7}
+.btn.primary,.btn.gold{background:var(--fx-accent);border-color:var(--fx-accent);color:#fff}
+.btn.primary:hover,.btn.gold:hover{background:var(--fx-accent-hover);border-color:var(--fx-accent-hover)}
+.btn.danger{color:var(--red)}
+.page-ctas .btn+.btn,.btn-row .btn+.btn,.inline-actions .btn+.btn{margin-left:-1px}
+.page-ctas,.btn-row,.inline-actions{gap:0!important}
+.page-ctas .btn,.btn-row .btn,.inline-actions .btn{border-radius:0}
+.page-ctas .btn:first-child,.btn-row .btn:first-child,.inline-actions .btn:first-child{border-radius:4px 0 0 4px}
+.page-ctas .btn:last-child,.btn-row .btn:last-child,.inline-actions .btn:last-child{border-radius:0 4px 4px 0}
+.page-ctas .btn:only-child,.btn-row .btn:only-child,.inline-actions .btn:only-child{border-radius:4px}
+.lw-actions{gap:6px}
+
+/* ---------- Page header (Lightning object header with icon tile) ---------- */
+.page-head{background:#fff;border:1px solid var(--fx-line);border-radius:4px;box-shadow:var(--shadow);padding:10px 14px;justify-content:flex-start;align-items:center}
+.page-head>div:first-child{flex:1;min-width:0}
+.page-head::before{content:"";flex:none;width:36px;height:36px;border-radius:4px;background:var(--fx-tile,#4f6bed) center/20px 20px no-repeat var(--fx-icon,none)}
+.page-head h1{font-size:18px}
+.page-head .eyebrow{font-size:10.5px;text-transform:none;letter-spacing:0;font-weight:400}
+body[data-page="inbox"]{--fx-tile:#0f6cbd;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='4' width='20' height='16' rx='2'/><path d='m22 7-10 6L2 7'/></svg>")}
+body[data-page="promises"]{--fx-tile:#ca5010;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='8' y='2' width='8' height='4' rx='1'/><path d='M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2'/><path d='m9 14 2 2 4-4'/></svg>")}
+body[data-page="contacts"]{--fx-tile:#8764b8;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2'/><circle cx='9' cy='7' r='4'/><path d='M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8'/></svg>")}
+body[data-page="companies"]{--fx-tile:#4f6bed;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='4' y='2' width='16' height='20' rx='2'/><path d='M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01'/></svg>")}
+body[data-page="projects"]{--fx-tile:#038387;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='2' y='7' width='20' height='14' rx='2'/><path d='M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16'/></svg>")}
+body[data-page="followups"]{--fx-tile:#107c10;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='4' width='18' height='18' rx='2'/><path d='M16 2v4M8 2v4M3 10h18'/></svg>")}
+body[data-page="manager"]{--fx-tile:#5c2e91;--fx-icon:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M3 3v18h18'/><path d='M18 17V9M13 17V5M8 17v-3'/></svg>")}
+
+/* ---------- Cards (Lightning card: header row with icon tile, title, actions) ---------- */
+.card,.hero{border-radius:4px;border-color:var(--fx-line);box-shadow:var(--shadow)}
+.dashboard-first,.qc-panel{border-top:1px solid var(--fx-line)}
+.section-title h2{font-size:14px;font-weight:700;gap:8px}
+.section-title h2 .icon{width:24px!important;height:24px!important;padding:4px;border-radius:4px;background:var(--fx-accent);color:#fff!important;stroke-width:2.2}
+.card h2>.icon,.card>h2 .icon{width:24px;height:24px;padding:4px;border-radius:4px;background:var(--fx-accent);color:#fff;stroke-width:2.2}
+.section-title a{font-size:12px}
+.subheading,.block-title,.qc-title{color:var(--fx-text)!important;text-transform:none!important;letter-spacing:0!important;font-size:13px!important;font-weight:700!important}
+
+/* Dashboard greeting: plain Lightning "Home" card */
+.hero:before{display:none}
+.hero{padding:10px 14px!important}
+.hero h1{font-size:17px}
+.hero .eyebrow{text-transform:none;letter-spacing:0;font-weight:400}
+.hero-date{background:var(--fx-hover);border:0;border-radius:4px;color:var(--fx-text);font-weight:600}
+
+/* ---------- Pivots / tabs (Microsoft pivot, Lightning tab underline) ---------- */
+.tabs{gap:2px!important;border-bottom:1px solid var(--fx-line);flex-wrap:wrap}
+.tab{border:0;border-radius:4px 4px 0 0;background:transparent;color:#424242;font-weight:600;padding:6px 10px;min-height:32px}
+.tab:hover{background:var(--fx-hover);color:var(--fx-text)}
+.tab.active{background:transparent;color:var(--fx-accent);box-shadow:inset 0 -2px 0 var(--fx-accent)}
+.search{border-radius:4px;border-color:#d1d1d1;border-bottom-color:#616161}
+.search:focus-within{border-bottom:2px solid var(--fx-accent)}
+
+/* ---------- Pills, status (always with label) ---------- */
+.pill,.tag{border-radius:4px;background:#f3f2f1;color:#424242;font-weight:600}
+.pill.gold,.tag.gold,.pill.blue,.tag.blue{background:var(--fx-sel);color:#0f548c}
+.pill.danger,.tag.danger{background:var(--red-soft);color:var(--red)}
+.pill.ok,.tag.ok,.pill.green{background:var(--green-soft);color:var(--green)}
+.notice{background:var(--fx-sel);border:1px solid var(--fx-sel-line);color:var(--fx-text);border-radius:4px}
+.note-box{background:var(--fx-bg);border:1px solid var(--fx-line);border-radius:4px}
+.note-box p{color:var(--fx-muted)}
+
+/* ---------- Lists (Outlook list rows) ---------- */
+.item-row{border-bottom-color:var(--fx-line-soft)}
+.row-icon{border-radius:4px;background:var(--fx-sel);color:var(--fx-accent)}
+.summary-stat .stat-icon{border-radius:4px;background:var(--fx-sel);color:var(--fx-accent)}
+.summary-stat strong,.mini-stats strong,.count-big,.tracker strong{color:var(--fx-text)}
+.mail-row{border-bottom-color:var(--fx-line-soft)}
+.mail-row:hover,.directory-entry:hover{background:var(--fx-hover)}
+.mail-row.selected,.directory-entry.selected{background:var(--fx-sel);box-shadow:inset 3px 0 0 var(--fx-accent)}
+.mail-row .line1 strong{color:var(--fx-text);font-size:13px;font-weight:600}
+.mail-row .subject{font-weight:600;color:var(--fx-text)}
+.mail-row .preview{color:var(--fx-muted)}
+.inbox-list-header{background:#fff}
+.detail-head{background:#fff}
+.company-name,.contact-company-name,.big-company{color:var(--fx-muted)!important;font-weight:600!important;letter-spacing:.2px}
+.directory-grid .directory-list .directory-entry .entry-head strong{color:var(--fx-text)!important}
+.avatar{border-radius:50%;background:var(--fx-sel);color:#0f548c;font-weight:600}
+
+/* ---------- Record page (Lightning): record header + highlights panel + related lists ---------- */
+.profile-head{background:#fff}
+.profile-head .big-company{color:var(--fx-muted)!important;font-size:11px!important;text-transform:uppercase;letter-spacing:.6px}
+.profile-head h2{font-size:18px;font-weight:700}
+.info-grid{gap:0;border:1px solid var(--fx-line);border-radius:4px;background:var(--fx-bg);grid-template-columns:repeat(auto-fit,minmax(130px,1fr))}
+.info-cell{background:transparent;border-radius:0;border-right:1px solid var(--fx-line-soft)}
+.info-cell:last-child{border-right:0}
+.info-cell label{color:var(--fx-muted)}
+.info-cell strong{color:var(--fx-text)}
+.profile-section{border-bottom-color:var(--fx-line-soft)}
+.timeline li:before{border-color:var(--fx-accent)}
+.timeline strong,.project-list .project h3,.pf-head h3,.qc-event h3,.qc-timer,.integration strong,.empty strong,.rep-card,.report-panel h3{color:var(--fx-text)!important}
+.progress b{background:var(--fx-accent)}
+.pf-file{border-left:3px solid var(--fx-accent);border-radius:4px}
+.rep-card{border-radius:4px}
+.rep-card.active{border:2px solid var(--fx-accent);background:var(--fx-sel)}
+.rep-card:hover{background:var(--fx-hover);border-color:#c7c7c7}
+
+/* ---------- Data table (Lightning) ---------- */
+.data-table th{background:var(--fx-bg);color:var(--fx-muted);font-weight:600;text-transform:none;letter-spacing:0;font-size:12px;border-bottom:1px solid var(--fx-line)}
+.data-table tr:hover td{background:#f5f5f5}
+.data-table td{border-bottom-color:var(--fx-line-soft)}
+
+/* ---------- Forms, dialogs, toasts (Fluent) ---------- */
+.field input,.field select,.field textarea,.pf-pick select,.lw-role select{border-radius:4px;border-color:#d1d1d1;border-bottom-color:#616161}
+.field input:focus,.field select:focus,.field textarea:focus,.pf-pick select:focus,.qc-multi-btn:focus-visible{border-color:#d1d1d1;border-bottom:2px solid var(--fx-accent);outline:0}
+.modal,.lw-dialog{border-radius:8px;box-shadow:0 8px 32px rgba(0,0,0,.22)}
+.choice-chips label:has(input:checked){background:var(--fx-sel);border-color:var(--fx-accent)}
+.steps .step.on,.switch.on{background:var(--fx-accent)}
+.toast{background:#292929;border-left:0;border-radius:4px}
+.qc-orb{border-color:var(--fx-accent);background:var(--fx-sel);color:var(--fx-accent)}
+.qc-spinner{border-color:var(--fx-sel);border-top-color:var(--fx-accent)}
+.qc-meeting.is-live{background:var(--fx-sel);border-color:var(--fx-sel-line)}
+.integration .icon,.focus-banner .icon,.simple-list .event .icon,.empty .icon{color:var(--fx-accent)}
+
+/* ---------- Phone ---------- */
+@media(max-width:850px){
+  .mobile-nav button{color:var(--fx-muted)}
+  .mobile-nav button.on{color:var(--fx-accent)}
+  .top-actions .lw-top-record[data-nav="search-all"]{width:auto;margin-left:0}
+}
+@media(max-width:580px){
+  .topbar::before{display:none}
+  .page-head::before{width:30px;height:30px;background-size:17px 17px}
+  .top-actions .lw-top-record[data-nav="search-all"]{font-size:0;width:36px;padding:0;justify-content:center;gap:0}
+}
+
+/* ---------- Full-width app bar on desktop, LuMaCo brand inside it ---------- */
+@media(min-width:851px){
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:30;padding-left:calc(var(--fx-side,208px) + 4px)}
+  .topbar::before{display:none}
+  .workspace{padding-top:48px}
+  .side{top:48px;height:calc(100vh - 48px);z-index:32}
+  .side>.brand{position:fixed;top:0;left:0;width:var(--fx-side,208px);height:48px;z-index:31;padding:0 12px;gap:9px;background:transparent;border:0}
+  .side>.brand::before{content:"";flex:none;width:18px;height:18px;opacity:.9;background:center/18px no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='white'><circle cx='4' cy='4' r='1.6'/><circle cx='10' cy='4' r='1.6'/><circle cx='16' cy='4' r='1.6'/><circle cx='4' cy='10' r='1.6'/><circle cx='10' cy='10' r='1.6'/><circle cx='16' cy='10' r='1.6'/><circle cx='4' cy='16' r='1.6'/><circle cx='10' cy='16' r='1.6'/><circle cx='16' cy='16' r='1.6'/></svg>")}
+  .side>.brand .brand-mark{background:#fff;color:var(--fx-appbar);width:30px;height:22px;font-size:10.5px}
+  .side>.brand strong,.side>.brand .dot{color:#fff;font-size:15px}
+  .side>.brand small{display:none}
+  .side>.brand+.nav-label{background:none;margin-top:0;padding-top:12px}
+  .topbar>div:first-child{border-left:1px solid rgba(255,255,255,.22);padding-left:12px}
+}
+@media(min-width:851px) and (max-width:1160px){:root{--fx-side:196px}}
+
+.topbar .top-btn{white-space:nowrap;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55);padding:0 10px;min-height:30px;flex:none}
+.topbar .top-btn:hover{background:rgba(255,255,255,.12)}
+.top-actions{flex-wrap:nowrap}
+.top-actions .lw-top-record{white-space:nowrap;flex:none}
+@media(max-width:1400px){.top-actions .top-status{display:none}}
+
+/* ---------- Leftovers ---------- */
+.hero .eyebrow{color:var(--fx-muted)}
+.qc-placeholder,.qc-next,.qc-source,.qc-audio,.qc-tile,.qc-event,.qc-recorder,.qc-field select,.qc-field input,.qc-multi-btn,.qc-multi-search,.qc-opt,.qc-chip,.qc-meeting,.qc-notes{border-radius:4px!important}
+.km-col>section.gap-section:not(.card){background:#fff;border:1px solid var(--fx-line);border-radius:4px;box-shadow:var(--shadow);padding:12px 14px}
+.company-name,.contact-company-name{text-transform:none!important;font-weight:400!important;letter-spacing:0!important;font-size:12px}
+
+/* ---------- Record page: header + highlights strip, then related-list cards ---------- */
+.km-record{background:transparent!important;border:0!important;box-shadow:none!important;display:flex;flex-direction:column;gap:10px;overflow:visible}
+.km-record>.profile-head,.km-record>.profile-section{background:#fff;border:1px solid var(--fx-line);border-radius:4px;box-shadow:var(--shadow)}
+.km-record>.profile-head{border-radius:4px 4px 0 0;border-bottom:0}
+.km-record>.km-highlights{margin-top:-10px;border-top:1px solid var(--fx-line-soft);border-radius:0 0 4px 4px;background:var(--fx-bg)}
+.km-highlights .info-grid{border:0;background:transparent}
+.km-highlights .info-cell strong{font-size:14px;font-weight:600}
+.km-record>.profile-section>.section-title{border-bottom:1px solid var(--fx-line-soft);margin:-10px -14px 8px;padding:8px 14px;background:#fff;border-radius:4px 4px 0 0}
+.star-button{border-color:#d1d1d1;background:#fff;border-radius:4px;color:#c19c00}
+.star-button.on svg{fill:#f2c811}
+.pf-person.is-current{background:var(--fx-accent)}
+.pf-latest{background:var(--fx-bg)}
+.pf-latest strong{color:var(--fx-muted);letter-spacing:.6px}
+.pf-entry-top strong{color:var(--fx-text)}
+
+/* ---------- Smart Email: mail commands sit inside the page header (command bar) ---------- */
+@media(min-width:760px){
+  .content:has(>.inbox-grid)>.page-head{grid-column:1/-1;grid-row:1;padding-right:376px}
+  .content:has(>.inbox-grid)>.lw-actions{grid-column:1/-1;grid-row:1;justify-self:end;align-self:center;margin:0 14px 8px 0;position:relative;z-index:1}
+}
+body[data-page="inbox"] .page-head .page-ctas .btn.gold{background:#fff;color:var(--fx-accent);border-color:#d1d1d1}
+.toolbar>.tabs{flex:1}
+.notice>.icon{margin-right:6px;vertical-align:-3px}
+
+/* ---------- Phone: page header row, single-row scrolling pivots ---------- */
+@media(max-width:850px){
+  .toolbar>.tabs{flex:1 1 100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .toolbar>.tabs::-webkit-scrollbar{display:none}
+  .toolbar>.search{flex:1 1 100%}
+  .tab{white-space:nowrap;flex:none}
+}
+@media(max-width:580px){
+  .page-head{flex-direction:row;flex-wrap:wrap;align-items:flex-start;gap:10px}
+  .page-head .page-ctas{width:100%}
+}
+
+/* ===== Round 6 pass 2: stronger Microsoft feel ===== */
+html,body{font-family:"Segoe UI","Segoe UI Variable","Selawik","Open Sans","Noto Sans",system-ui,-apple-system,Roboto,Arial,sans-serif}
+
+/* Command bar (Fluent / Dynamics): one white strip under the app bar on every page with actions */
+.km-cmdbar{display:flex;align-items:center;gap:2px;margin:-12px -16px 10px;padding:4px 12px;min-height:44px;background:#fff;border-bottom:1px solid var(--fx-line);position:sticky;top:48px;z-index:7;overflow-x:auto;scrollbar-width:none;grid-column:1/-1}
+.km-cmdbar::-webkit-scrollbar{display:none}
+.km-cmdbar .btn,.km-cmdbar .btn.gold,.km-cmdbar .btn.primary{background:transparent;border:1px solid transparent;border-radius:4px;color:var(--fx-text);font-weight:400;min-height:32px;padding:4px 8px;white-space:nowrap;flex:none;margin:0}
+.km-cmdbar .btn .icon{color:var(--fx-accent)}
+.km-cmdbar .btn:hover{background:var(--fx-hover)}
+.km-cmdbar .btn:active{background:#e1dfdd}
+.km-cmdbar .btn+.btn{margin-left:0}
+.km-cmdbar .btn:first-child{font-weight:600}
+@media(max-width:1160px){.km-cmdbar{margin:-12px -14px 10px}}
+@media(max-width:850px){.km-cmdbar{top:48px;margin:-10px -10px 10px}}
+@media(max-width:580px){.km-cmdbar{margin:-8px -8px 8px}}
+/* Smart Email: header row now holds only the page header */
+body[data-page="inbox"] .content>.km-cmdbar{grid-row:1}
+body[data-page="inbox"] .content>.page-head{grid-row:2!important;grid-column:1/-1!important;padding-right:14px!important}
+.page-head{padding:8px 14px}
+
+/* Sidebar groups like a Dynamics site map: sentence-case group titles */
+.side>.nav-label{text-transform:none;letter-spacing:0;font-size:12px;font-weight:600;color:var(--fx-text)}
+
+/* Compact command-style record buttons, no full-width bars */
+.side .lw-record{width:auto!important;align-self:flex-start;justify-content:flex-start;background:transparent!important;border-color:transparent!important;color:var(--fx-text)!important;font-weight:600;margin:6px 8px!important;padding:4px 8px!important}
+.side .lw-record .icon{color:var(--fx-accent)}
+.side .lw-record:hover{background:var(--fx-hover)!important}
+.qc-panel .btn{width:auto!important;align-self:flex-start}
+.qc-panel .btn.primary{min-height:30px}
+
+/* App bar actions as flat header buttons, no pill outline */
+.topbar .top-btn{border-color:transparent;font-weight:600}
+.topbar .top-btn:hover{background:rgba(255,255,255,.12)}
+
+/* Greeting smaller, more like a Dynamics dashboard header */
+.hero h1{font-size:16px}
+.hero p{font-size:12px}
+
+/* ===== Round 6 pass 3 ===== */
+/* Command icons where the button has none */
+.km-cmdbar .btn[data-lw="compose"]::before,.km-cmdbar .btn[data-lw="reply"]::before{content:"";width:16px;height:16px;flex:none;background:center/16px no-repeat}
+.km-cmdbar .btn[data-lw="compose"]::before{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f6cbd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M12 20h9'/><path d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/></svg>")}
+.km-cmdbar .btn[data-lw="reply"]::before{background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230f6cbd' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M9 17 4 12l5-5'/><path d='M20 18v-2a4 4 0 0 0-4-4H4'/></svg>")}
+
+/* Signed-in user at the right end of the app bar (decorative, as in Microsoft 365) */
+@media(min-width:581px){
+  .top-actions::after{content:"SJ";flex:none;width:30px;height:30px;margin-left:6px;border-radius:50%;display:grid;place-items:center;background:#c7e0f4;color:#0f548c;font-size:11.5px;font-weight:600}
+}
+
+/* Smart Email: the two-classification note keeps its full text and wraps on narrow screens */
+body[data-page="inbox"] .content>.notice{padding:6px 12px;white-space:normal;overflow:visible}
+
+/* Outlook-like category tags: flatter, smaller */
+.mail-row .line3 .pill,.mail-row .line3 .tag{font-weight:400;padding:1px 6px;font-size:10.5px}
+
+/* ===== Round 6 pass 4: Fluent buttons stay separate; one blue for page icon tiles ===== */
+.page-ctas,.btn-row,.inline-actions{gap:6px!important}
+.page-ctas .btn,.btn-row .btn,.inline-actions .btn{border-radius:4px!important;margin-left:0!important}
+body[data-page]{--fx-tile:#0f6cbd}
+
+/* ===== Round 6 pass 5: flatter Fluent surfaces ===== */
+.company-name,.directory-entry .contact-company-name{text-transform:none!important;font-weight:600!important;letter-spacing:0!important;color:var(--fx-muted)!important}
+.section-title h2 .icon,.card h2>.icon,.card>h2 .icon{background:transparent!important;color:var(--fx-accent)!important;padding:0!important;width:18px!important;height:18px!important}
+.card,.hero,.page-head,.km-record>.profile-head,.km-record>.profile-section{box-shadow:none!important}
+.page-head::before{border-radius:2px;width:32px;height:32px;background-size:18px 18px}
+.project-list .project,.directory-entry,.rep-card,.summary-stat{border-radius:4px}
+
+/* ===== Round 8 ===== */
+/* Title-case company names everywhere (names are stored in title case) */
+.directory-entry .entry-head strong,.profile-head .big-company,.company-name{text-transform:none!important}
+.profile-head .big-company{letter-spacing:0!important;font-size:12px!important}
+
+/* Smart Email rows: two lines; tags share line 2 and wrap only if they must */
+.mail-row{padding:7px 12px}
+.km-l1,.km-l2{display:flex;align-items:baseline;gap:8px;min-width:0}
+.km-l1 strong{flex:none;font-size:13px;font-weight:600;color:var(--fx-text)}
+.km-l1 .company-name{flex:1 1 auto;min-width:0;margin:0!important;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.km-l1 time{flex:none;margin-left:auto;font-size:11.5px;color:var(--fx-muted)}
+.km-l2{flex-wrap:wrap;row-gap:3px;margin-top:2px}
+.km-l2 .subject{flex:0 1 auto;margin:0!important;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px}
+.km-l2 .preview{flex:1 1 120px;margin:0!important;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.km-l2 .line3{flex:none;margin:0 0 0 auto!important;display:flex;gap:4px}
+
+/* Record pages: collapsible sections */
+.km-collapsible .km-head{cursor:pointer;user-select:none}
+.km-collapsible .km-head:hover{background:var(--fx-hover)}
+.km-collapsible .km-head::after{content:"";flex:none;width:16px;height:16px;margin-left:8px;transition:transform .15s;background:center/16px no-repeat url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23605e5c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>")}
+.km-collapsible.km-closed .km-head::after{transform:rotate(-90deg)}
+.km-collapsible.km-closed>:not(.km-head):not(.km-headwrap),.km-collapsible.km-closed>.km-headwrap>:not(.km-head){display:none!important}
+.km-record>.km-collapsible.km-closed{padding-bottom:0}
+.km-record>.km-collapsible.km-closed .km-head{border-bottom:0;margin-bottom:0;border-radius:4px}
+.km-collapsible .km-head:focus-visible{outline:2px solid var(--fx-accent);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){.km-collapsible .km-head::after{transition:none}}
+
+/* Follow-ups table: fits its card; least-needed columns drop out before Review is hidden */
+.responsive-table{container-type:inline-size;overflow:hidden}
+.responsive-table .data-table{min-width:0!important;width:100%}
+.data-table th,.data-table td{white-space:nowrap}
+.data-table td:first-child{white-space:normal}
+.data-table td:last-child,.data-table th:last-child{text-align:right;width:1%}
+
+/* Manager View: no salesperson selected until one is clicked */
+body:not(.km-rep-chosen) .report-panel{display:none}
+body:not(.km-rep-chosen) .rep-card.active{border:1px solid var(--fx-line);background:#fff;padding:9px}
+
+/* ===== Round 9 ===== */
+/* Collapsible headings nested one level down (Relationship Snapshot) look like the others */
+.km-record>.profile-section>.km-headwrap{padding:0!important;margin:0!important;border:0!important}
+.km-record>.profile-section>.km-headwrap>.km-head{border-bottom:1px solid var(--fx-line-soft);margin:-10px -14px 8px;padding:8px 14px;background:#fff;border-radius:4px 4px 0 0}
+.km-record>.km-collapsible.km-closed>.km-headwrap>.km-head{margin-bottom:0;border-bottom:0;border-radius:4px}
+.km-collapsible .km-head:hover{background:var(--fx-hover)!important}
+.km-collapsible .km-head h2{flex:1}
+
+/* Smart Email: when the list and reading pane can't sit side by side, the opened email
+   covers the whole body area below the command bar; Close or Esc returns to the list */
+.km-mail-close{display:none}
+@media(max-width:1160px){
+  body[data-page="inbox"] .inbox-grid>.detail-panel{display:none}
+  body.km-mail-open[data-page="inbox"] .inbox-grid>.detail-panel{display:block;position:fixed;top:92px;left:var(--fx-side,196px);right:0;bottom:0;z-index:25;overflow:auto;margin:0;border-radius:0;border:0;border-top:1px solid var(--fx-line);box-shadow:0 8px 24px rgba(0,0,0,.14)!important}
+  body.km-mail-open[data-page="inbox"] .km-mail-close{display:inline-flex;position:sticky;top:0;float:right;margin:8px 10px 0 0;z-index:2}
+}
+@media(max-width:850px){
+  body.km-mail-open[data-page="inbox"] .inbox-grid>.detail-panel{left:0;top:92px;padding-bottom:72px}
+}

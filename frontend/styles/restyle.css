@@ -1,0 +1,221 @@
+/* LuMaCo restyle (mockup): denser layout modelled on the IP-High-Fidelity shell,
+   white sidebar whose accent colours appear only as divider lines. Loaded last. */
+:root{--round:8px;--shadow:0 1px 2px rgba(19,40,68,.05);--rule-gold:#b58a3b;--rule-gold-soft:#e9dcc2}
+html,body{font-size:13px;line-height:1.4}
+h1{font-size:21px;line-height:1.2;letter-spacing:-.4px}h2{font-size:15px;letter-spacing:-.2px}h3{font-size:13px}
+.eyebrow{font-size:9.5px;letter-spacing:1px}
+
+/* ---------- Sidebar: white; gold only on the dividers ---------- */
+.side{width:208px;background:#fff;color:var(--navy);border-right:1px solid var(--rule-gold)}
+.side button:focus-visible,.side select:focus-visible{outline:2px solid var(--navy);outline-offset:-2px}
+.brand{padding:11px 14px;gap:10px;border-bottom:2px solid var(--rule-gold)}
+.brand-mark{width:34px;height:25px;border-radius:5px;background:var(--navy);color:#fff;font-size:11.5px}
+.brand strong{color:var(--navy);font-size:17px}.brand .dot{color:var(--navy)}
+.brand small{color:var(--muted);font-size:8.5px;letter-spacing:1px}
+.nav-label{padding:9px 14px 4px;color:var(--muted);font-size:9px;letter-spacing:1.1px}
+.nav{gap:0;padding:0}
+.nav button{padding:6px 14px;gap:9px;border-radius:0;color:var(--navy);font-weight:550;font-size:12.5px;min-height:32px;border-bottom:1px solid var(--rule-gold-soft)}
+.nav button:last-child{border-bottom:0}
+.nav button .icon{color:#4b5d74;width:16px;height:16px}
+.nav button:hover{background:#f3f5f8;color:var(--navy)}
+.nav button.active{background:#eef1f5;color:var(--navy);font-weight:800;box-shadow:none}
+.nav button.active .icon{color:var(--navy)}
+.nav .count,.nav button.active .count{background:#fff;color:var(--navy);border:1px solid #9aa6b5;border-radius:6px;padding:0 5px;font-size:10.5px;line-height:16px}
+.lw-role{padding:8px 14px;color:var(--navy);border-top:2px solid var(--rule-gold);background:#fff}
+.lw-role label{font-size:10px;margin-bottom:3px;color:var(--muted)}
+.lw-role select{padding:4px 6px;border:1px solid #c9d1dc;border-radius:6px;background:#fff;color:var(--navy);font-size:12px}
+.side .lw-record,.side .btn.primary{background:#fff;color:var(--navy);border:1px solid var(--navy);padding:5px 8px;min-height:30px;margin:8px 14px;width:calc(100% - 28px)}
+.side .lw-record:hover{background:#f3f5f8}
+.side-bottom{padding:9px 14px;border-top:2px solid var(--rule-gold)}
+.private{color:var(--navy);font-size:11px}.private .icon{color:var(--navy)}
+.side-bottom p{margin-top:4px;font-size:10px;color:var(--muted);line-height:1.35}
+
+/* ---------- Top bar: slim ---------- */
+.topbar{height:46px;padding:0 16px;gap:10px;box-shadow:none;border-bottom:1px solid #0e1d31}
+.topbar .top-title{font-size:14.5px}.topbar .top-sub{font-size:10px;line-height:1.2}
+.top-actions{gap:6px}.top-actions .top-status{padding:3px 8px;font-size:10px;border-radius:6px}
+.topbar .top-btn,.top-actions .btn{padding:5px 10px;border-radius:6px;font-size:12px;min-height:30px}
+
+/* ---------- Content: fill the width, tighter rhythm ---------- */
+.content{max-width:none;padding:12px 16px 48px}
+.page-head{margin-bottom:10px;gap:10px;align-items:center}
+.page-head .eyebrow{margin-bottom:2px}.page-head p{margin-top:2px;font-size:12px}
+.section-title{margin:0 0 6px}.section-title h2 .icon{width:16px;height:16px}
+.section-desc{margin:-2px 0 8px;font-size:12px}
+.grid{gap:10px}.split{gap:10px}.gap-section{margin-top:10px}
+.card{border-radius:var(--round)}
+.pad,.card .pad,.card.pad{padding:12px 14px}
+.hero{padding:10px 14px 10px 18px;margin-bottom:10px}
+.hero:before{width:3px}
+.hero h1{font-size:19px}.hero p{margin-top:2px;font-size:12px}
+.hero-date{padding:5px 9px;border-radius:6px;font-size:12px}
+.btn{padding:5px 10px;min-height:30px;border-radius:6px;font-size:12.5px}
+.btn.sm{padding:3px 8px;min-height:26px;font-size:11.5px}
+.pill,.tag{padding:2px 6px;font-size:10.5px;border-radius:5px}
+.note-box{padding:9px 11px;border-radius:7px}
+
+/* Rows and lists */
+.item-row{padding:8px 0;gap:9px}
+.row-icon{width:28px;height:28px;border-radius:7px}.row-icon .icon{width:15px;height:15px}
+.row-main p{margin-top:1px;font-size:11.5px}
+.row-meta{margin-top:4px;gap:5px}
+.summary-stat{padding:9px 12px;display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto auto;column-gap:10px;align-items:center}
+.summary-stat .stat-icon{width:28px;height:28px;margin:0;grid-row:1/3;border-radius:7px}
+.summary-stat strong{font-size:19px;margin:0}.summary-stat span{font-size:11px}
+.mini-stats{gap:6px;margin-bottom:8px}.mini-stats>div{padding:6px 10px}.mini-stats strong{font-size:17px}
+.toolbar{margin-bottom:8px;gap:6px}.tabs{gap:5px}
+.settings-row{padding:9px 0}
+
+/* Smart Email: list + reading pane */
+.inbox-grid{gap:10px}
+@media(min-width:1161px){.inbox-grid{grid-template-columns:minmax(320px,.9fr) minmax(380px,1.1fr)}}
+.inbox-list-header{padding:8px 12px}
+.mail-row{padding:9px 12px}
+.mail-row .subject{margin-top:3px}.mail-row .preview{margin-top:1px}.mail-row .line3{margin-top:5px}
+.detail-head{padding:12px 14px 10px}.detail-body{padding:12px 14px}
+
+/* Contacts / Companies / Projects directories */
+.directory-grid{gap:10px}
+@media(min-width:1161px){.directory-grid{grid-template-columns:minmax(260px,.75fr) minmax(420px,1.5fr)}}
+.directory-entry{padding:9px 12px}.entry-foot{margin-top:6px}
+.profile-head{padding:12px 14px}
+.profile-head .big-company{font-size:18px;margin-top:2px}
+.profile-head .person-line{margin-top:8px;gap:10px}
+.profile-head .person-line .avatar{width:40px;height:40px;font-size:14px}
+.profile-head h2{font-size:16px}
+.profile-section{padding:10px 14px}
+.info-grid{gap:6px}.info-cell{padding:7px 9px;border-radius:6px}.info-cell label{margin-bottom:1px;font-size:10.5px}
+.pill-line{margin-top:5px;gap:5px}
+
+/* Enhanced screens */
+.tracker-grid{gap:8px}.tracker{padding:9px}
+.report-panel{margin-top:10px;padding:12px}.rep-card{padding:9px;gap:5px}
+.data-table td,.data-table th{padding:6px 8px}
+.coverage-row{padding:5px 0}
+.snapshot{padding-bottom:8px;margin-bottom:8px}
+
+/* Modals keep their size but lose extra padding */
+.modal-header{padding:12px 16px}.modal-body{padding:14px 16px}.modal-footer{padding:10px 16px}
+
+/* ---------- Narrow screens ---------- */
+@media(max-width:1160px){.side{width:196px}.content{padding:12px 14px 48px}}
+@media(max-width:850px){
+  .topbar{height:48px;padding:0 12px}
+  .content{padding:10px 10px 84px}
+  .mobile-nav{background:#fff;border-top:2px solid var(--rule-gold);padding:4px 2px calc(4px + env(safe-area-inset-bottom))}
+  .mobile-nav button{color:#4b5d74;min-height:44px;padding:4px 6px}
+  .mobile-nav button.on{color:var(--navy);font-weight:800}
+}
+@media(max-width:580px){
+  h1{font-size:19px}
+  .hero{padding:10px 12px 10px 15px}
+  .content{padding:8px 8px 84px}
+  .pad,.card .pad,.card.pad,.summary-stat{padding:10px 11px}
+  .detail-head,.detail-body,.profile-head,.profile-section{padding:10px 12px}
+}
+
+/* Needs Attention rows: actions sit to the right of the text on wider screens */
+@container (min-width:500px){
+  .row-main:has(>.inline-actions){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:center}
+  .row-main:has(>.inline-actions)>*{grid-column:1}
+  .row-main:has(>.inline-actions)>.inline-actions{grid-column:2;grid-row:1/span 3;margin:0;flex-wrap:nowrap;gap:4px}
+}
+.inline-actions{gap:5px;margin-top:6px}
+
+/* Sidebar order: navigation first, then quick record, demo role and privacy note */
+.side{overflow-y:auto}
+.side>.lw-nav{order:1;border-top:2px solid var(--rule-gold)}
+.side>.lw-record{order:2}
+.side>.lw-role{order:3}
+.side>.side-bottom{order:4}
+.lw-nav{gap:0}
+.lw-nav button{display:flex;align-items:center;gap:9px;border:0;background:transparent;text-align:left;width:100%;padding:6px 14px;min-height:32px;color:var(--navy);font-weight:550;font-size:12.5px;border-bottom:1px solid var(--rule-gold-soft)}
+.lw-nav button:last-child{border-bottom:0}
+.lw-nav button:hover{background:#f3f5f8}
+.lw-nav button.active{background:#eef1f5;font-weight:800}
+.lw-nav button .icon{color:#4b5d74;width:16px;height:16px}
+.brand small{font-size:9px}
+
+/* Smart Email: header, explainer, notice and filters compressed so the list starts high */
+.content:has(>.inbox-grid){display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-content:start}
+.content:has(>.inbox-grid)>*{grid-column:1/-1}
+.content:has(>.inbox-grid)>.page-head{margin-bottom:8px}
+.content:has(>.inbox-grid)>.lw-actions{margin:0 0 8px;gap:6px}
+@media(min-width:760px){
+  .content:has(>.inbox-grid)>.page-head{grid-row:1;grid-column:1}
+  .content:has(>.inbox-grid)>.lw-actions{grid-row:1;grid-column:2;align-self:center}
+}
+.content:has(>.inbox-grid)>.card.pad{margin-bottom:8px!important;padding:9px 12px}
+.content:has(>.inbox-grid)>.card.pad>.section-title{margin-bottom:2px}
+.content:has(>.inbox-grid)>.card.pad>p{font-size:11.5px}
+.content:has(>.inbox-grid)>.card.pad>.grid{margin-top:7px!important;gap:6px}
+.content:has(>.inbox-grid) .note-box{padding:6px 9px}
+.content:has(>.inbox-grid) .note-box strong{font-size:12px}
+.content:has(>.inbox-grid) .note-box p{font-size:11px;margin-top:1px}
+.notice{padding:7px 11px;font-size:12px;margin-bottom:8px!important;border-radius:7px}
+.content:has(>.inbox-grid)>.toolbar{margin:0 0 8px!important}
+.tab{padding:4px 9px;font-size:12px;min-height:28px;border-radius:6px}
+.search{padding:4px 9px;border-radius:6px;min-height:30px}
+
+/* Open Promises: three cards across on wide screens */
+@media(min-width:1240px){.content>.grid.g2:has(>.card.pad>.note-box){grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Side-by-side cards keep their own height instead of stretching into empty space */
+.split{align-items:start}
+.rep-card{border-radius:8px}.rep-card.active{padding:8px}.rep-card strong{font-size:13.5px}
+
+/* Phone top bar: title only, actions as icon buttons */
+@media(max-width:580px){
+  .topbar .top-sub{display:none}
+  .topbar .top-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar>div:first-child{min-width:0}
+  .top-actions{gap:4px;flex:none}
+  .top-actions .top-btn,.top-actions .btn{font-size:0;gap:0;width:36px;height:36px;min-height:36px;padding:0;justify-content:center}
+  .top-actions .top-btn .icon,.top-actions .btn .icon{width:18px;height:18px}
+}
+@media(max-width:580px){
+  .top-actions .lw-top-record{font-size:11.5px;width:auto;padding:0 8px;margin:0}
+  .top-actions .lw-top-record[data-nav="meetings"]{display:none}
+}
+
+/* ---------- Round 3: modern sidebar dividers ----------
+   No rule under every item; one thin inset gold line, fading at both ends, between groups.
+   Items are rounded pills with a neutral hover and selected state. */
+:root{--km-rule:linear-gradient(90deg,transparent,var(--rule-gold) 16%,var(--rule-gold) 84%,transparent) top center/calc(100% - 28px) 1px no-repeat}
+.side{border-right:1px solid var(--rule-gold-soft)}
+.brand{border-bottom:0;padding:12px 14px 10px}
+.side>.nav-label,.side>.lw-nav,.side>.lw-role,.side>.side-bottom{border-top:0}
+.side>.nav-label,.side>.lw-nav,.side>.lw-role,.side>.side-bottom{background:var(--km-rule);margin-top:6px}
+.side>.nav-label{padding:10px 16px 3px}
+.side>.lw-nav{padding-top:7px}
+.nav,.lw-nav{padding:0 8px;gap:1px}
+.nav button,.lw-nav button{border:0;border-radius:7px;padding:6px 8px;min-height:32px}
+.nav button:hover,.lw-nav button:hover{background:#f3f5f8}
+.nav button.active,.lw-nav button.active{background:#edf0f5;font-weight:750}
+.side>.lw-record{margin:10px 14px 8px}
+.side>.lw-role{padding-top:10px}
+.side-bottom{padding-top:10px}
+
+/* ---------- Round 3: dashboard packs into two independent columns ---------- */
+.content,.km-col{container-type:inline-size}
+.km-dash{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:10px;align-items:start}
+.km-col{display:flex;flex-direction:column;gap:10px;min-width:0}
+.km-col>*{margin:0!important}
+.km-col .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+.km-col .split{grid-template-columns:1fr}
+.km-dash~.footer-note{margin-top:10px}
+@media(max-width:850px){
+  .km-dash{display:flex;flex-direction:column}
+  .km-col{display:contents}
+}
+
+/* ---------- Round 4: Capture stays in place while the dashboard scrolls ----------
+   Desktop only; the rest of the right column slides up beneath it. */
+@media(min-width:851px) and (min-height:640px){
+  .km-col>.qc-panel{position:sticky;top:58px;z-index:6;box-shadow:0 -12px 0 var(--background),0 4px 14px rgba(19,40,68,.10)}
+}
+
+/* Round 5: the greeting moves to the top of the left column, so Capture starts
+   right under the top bar and never moves at all */
+.km-col>.hero{padding:9px 12px 9px 16px}
+.km-col>.hero .hero-inner{flex-wrap:wrap;row-gap:4px}
