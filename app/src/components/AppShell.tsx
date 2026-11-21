@@ -3,10 +3,14 @@ import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { BrandMark, Icon, type IconName } from './Icon';
 
-const NAV: { to: string; label: string; icon: IconName }[] = [
-  { to: '/app', label: 'Dashboard', icon: 'dashboard' },
+const NAV: { to: string; label: string; icon: IconName; mobile?: boolean }[] = [
+  { to: '/app', label: 'Dashboard', icon: 'dashboard', mobile: true },
+  { to: '/app/capture', label: 'Record', icon: 'mic', mobile: true },
+  { to: '/app/meetings', label: 'Meetings', icon: 'file', mobile: true },
+  { to: '/app/contacts', label: 'Contacts', icon: 'users', mobile: true },
+  { to: '/app/projects', label: 'Projects', icon: 'briefcase' },
   { to: '/app/integrations', label: 'Integrations', icon: 'link' },
-  { to: '/app/teams', label: 'Teams', icon: 'users' },
+  { to: '/app/teams', label: 'Teams', icon: 'shield' },
   { to: '/app/account', label: 'Account', icon: 'settings' },
 ];
 
@@ -60,8 +64,8 @@ export function AppShell() {
         </div>
       </aside>
       <main className="main" id="main"><Outlet /></main>
-      <nav className="mobile-nav" aria-label="Main navigation">
-        {NAV.map(n => (
+      <nav className="mobile-nav" aria-label="Quick navigation">
+        {NAV.filter(n => n.mobile).map(n => (
           <NavLink key={n.to} to={n.to} end={n.to === '/app'}><Icon name={n.icon} /><span>{n.label}</span></NavLink>
         ))}
       </nav>

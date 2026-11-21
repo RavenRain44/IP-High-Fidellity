@@ -111,6 +111,37 @@ ok(await fails(users.alice, `delete from public.team_members where user_id = $1 
 await as(users.bob, `delete from public.team_members where user_id = $1 and team_id = $2`, [users.bob.id, team]);
 ok((await seen(users.bob)).length === 0, 'after leaving, bob loses access to team records immediately');
 
+// ---- Meeting capture: finalize_meeting() files a reviewed meeting atomically ----
+const ids = Object.fromEntries((await as(users.alice, `select full_name, id from public.contacts`)).rows.map(r => [r.full_name, r.id]));
+const meeting = (await as(users.alice, `insert into public.meetings (kind, consent_confirmed, title, duration_sec) values ('meeting', true, 'Riverside check-in', 900) returning id`)).rows[0].id;
+const outsiderContact = (await as(users.dave, `insert into public.contacts (full_name) values ('Dave private') returning id`)).rows[0].id;
+const promisesJson = JSON.stringify([
+  { title: 'Send revised drawings', direction: 'made_by_me', due_on: '2026-12-04', contact_id: ids['Team shared'], evidence: 'I will send them Friday' },
+  { title: 'Approve alternate', direction: 'made_to_me', due_on: '', contact_id: outsiderContact, evidence: 'They will approve' },
+  { title: '   ', direction: 'made_by_me' },
+]);
+const finalize = (u, mid) => as(u, `select public.finalize_meeting($1, 'Riverside check-in', $2, 'transcript', $3::uuid[], null, $4, 'team', $5::jsonb) id`,
+  [mid, 'Summary\nReviewed drawings and schedule.\n\nAction items\n• Send drawings', `{${ids['Team shared']},${outsiderContact}}`, team, promisesJson]);
+ok(!!(await finalize(users.alice, meeting)).rows[0].id, 'author files a reviewed meeting');
+const linked = (await as(users.alice, `select contact_id from public.meeting_contacts where meeting_id=$1`, [meeting])).rows;
+ok(linked.length === 1 && linked[0].contact_id === ids['Team shared'], 'only contacts the author can see get linked (outsider contact dropped)');
+const prs = (await as(users.alice, `select title, contact_id, due_on, direction from public.promises where source_ref=$1 order by title`, [meeting])).rows;
+ok(prs.length === 2, 'blank promises are skipped; approved promises are created');
+ok(prs.every(p => p.contact_id === ids['Team shared']), 'a promise naming an unreadable contact falls back to a linked contact');
+ok((await as(users.alice, `select summary from public.interactions where source_ref=$1`, [meeting + ':' + ids['Team shared']])).rows[0]?.summary === 'Reviewed drawings and schedule.', 'timeline entry uses the first line of the summary');
+ok((await as(users.alice, `select last_engagement_at from public.contacts where id=$1`, [ids['Team shared']])).rows[0].last_engagement_at !== null, 'a recorded meeting updates last engagement');
+await finalize(users.alice, meeting);
+ok((await as(users.alice, `select count(*)::int n from public.interactions where source='recording'`)).rows[0].n === 1 &&
+   (await as(users.alice, `select count(*)::int n from public.promises where source_ref=$1`, [meeting])).rows[0].n === 2, 're-filing does not duplicate timeline entries or promises');
+ok((await as(users.carol, `select count(*)::int n from public.meetings where id=$1`, [meeting])).rows[0].n === 1, 'team-shared meeting is visible to the manager');
+ok((await as(users.carol, `select count(*)::int n from public.promises where source_ref=$1`, [meeting])).rows[0].n === 2, 'its promises are visible to the team');
+ok(await fails(users.carol, `select public.finalize_meeting($1, 'x', 'x', null, '{}', null, null, 'private', '[]')`, [meeting]), 'nobody else can file or rewrite your meeting');
+ok((await as(users.dave, `select count(*)::int n from public.meetings`)).rows[0].n === 0, 'outsiders cannot see the meeting');
+const priv = (await as(users.alice, `insert into public.meetings (kind, title) values ('notes', 'Private voice note') returning id`)).rows[0].id;
+await as(users.alice, `select public.finalize_meeting($1, 'Private voice note', 'secret', null, '{}', null, null, 'team', '[]')`, [priv]);
+ok((await as(users.alice, `select visibility from public.meetings where id=$1`, [priv])).rows[0].visibility === 'private', 'personal-workspace notes are always private');
+ok((await as(users.carol, `select count(*)::int n from public.meetings where id=$1`, [priv])).rows[0].n === 0, 'managers never see personal notes');
+
 // Signed-out visitors (anon) get nothing.
 async function asAnon(sql) {
   await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false)"); await db.exec('set role anon');

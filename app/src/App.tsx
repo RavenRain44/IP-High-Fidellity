@@ -6,6 +6,11 @@ import { Dashboard } from './pages/Dashboard';
 import { Integrations } from './pages/Integrations';
 import { Teams } from './pages/Teams';
 import { Account } from './pages/Account';
+import { Contacts } from './pages/Contacts';
+import { Projects } from './pages/Projects';
+import { Capture } from './pages/Capture';
+import { Meetings } from './pages/Meetings';
+import { Meeting } from './pages/Meeting';
 
 export function App() {
   return (
@@ -19,6 +24,11 @@ export function App() {
       <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
       <Route path="/app" element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Dashboard />} />
+        <Route path="capture" element={<Capture />} />
+        <Route path="meetings" element={<Meetings />} />
+        <Route path="meetings/:id" element={<Meeting />} />
+        <Route path="contacts" element={<Contacts />} />
+        <Route path="projects" element={<Projects />} />
         <Route path="integrations" element={<Integrations />} />
         <Route path="teams" element={<Teams />} />
         <Route path="account" element={<Account />} />
