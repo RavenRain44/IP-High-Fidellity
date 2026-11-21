@@ -6,6 +6,11 @@ This repository packages the latest LuMaCo Navy & Champagne Gold prototype into 
 
 The existing UI is functional **with simulated information** and persists demo edits in `localStorage` (`lumaco_prototype_v3`). The separate Python/SQLite API is a starting point for future work; **the browser UI is not yet connected to this API**. None of the phone, SMS, Gmail, Outlook, Calendar, AI, transcription, OAuth, or secure multiuser features are live.
 
+## Two modes: demo and normal
+
+- **Demo mode** — this prototype (`frontend/`), simulated data and integrations. Run it as described below, or open `/demo/` on the deployed site.
+- **Normal mode** — the real product in `app/` (React + TypeScript + Supabase): real accounts with Google, Microsoft or email sign-in, standalone or team workspaces, and a privacy-enforcing database. Plan: [docs/REAL_MODE_PLAN.md](docs/REAL_MODE_PLAN.md). Setup: [docs/REAL_MODE_SETUP.md](docs/REAL_MODE_SETUP.md).
+
 ## Run locally (Python 3.10+, no packages to install)
 
 1. Extract the ZIP and open a terminal in this folder.

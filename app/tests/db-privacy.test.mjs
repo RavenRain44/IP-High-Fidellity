@@ -1,0 +1,117 @@
+// Run: npm run test:db
+// Applies supabase/migrations/*.sql to an in-memory Postgres (PGlite) with minimal stand-ins
+// for Supabase's auth/storage schemas, then checks the privacy rules as real users.
+import { PGlite } from '@electric-sql/pglite';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+
+const repo = process.argv[2] ?? new URL('../..', import.meta.url).pathname;
+const db = new PGlite();
+let failures = 0;
+const ok = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failures++; };
+
+await db.exec(`
+  create role anon nologin; create role authenticated nologin; create role service_role nologin bypassrls;
+  create schema auth; create schema storage;
+  create table auth.users (id uuid primary key, email text, raw_user_meta_data jsonb not null default '{}');
+  create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+  create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('request.jwt.claims', true), ''), '{}')::jsonb $$;
+  create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+  create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text);
+  alter table storage.objects enable row level security;
+  create function storage.foldername(name text) returns text[] language sql immutable as $$
+    select (string_to_array(name, '/'))[1:array_length(string_to_array(name, '/'), 1) - 1] $$;
+  grant usage on schema public, auth, storage to anon, authenticated, service_role;
+  grant execute on all functions in schema auth to anon, authenticated;
+  grant all on all tables in schema storage to authenticated;
+  -- Supabase grants table access to these roles by default; RLS decides which rows.
+  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+`);
+
+const dir = join(repo, 'supabase', 'migrations');
+for (const f of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
+  await db.exec(readFileSync(join(dir, f), 'utf8'));
+  console.log(`applied ${f}`);
+}
+
+const users = {
+  alice: { id: '00000000-0000-0000-0000-00000000000a', email: 'alice@acme.test', name: 'Alice Owner' },
+  bob:   { id: '00000000-0000-0000-0000-00000000000b', email: 'bob@acme.test',   name: 'Bob Member' },
+  carol: { id: '00000000-0000-0000-0000-00000000000c', email: 'carol@acme.test', name: 'Carol Manager' },
+  dave:  { id: '00000000-0000-0000-0000-00000000000d', email: 'dave@other.test', name: 'Dave Outsider' },
+};
+for (const u of Object.values(users)) {
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`, [u.id, u.email, { full_name: u.name }]);
+}
+
+async function as(user, sql, params = []) {
+  await db.exec('reset role');
+  await db.query(`select set_config('request.jwt.claim.sub', $1, false), set_config('request.jwt.claims', $2, false)`,
+    [user.id, JSON.stringify({ sub: user.id, email: user.email, role: 'authenticated' })]);
+  await db.exec('set role authenticated');
+  try { return await db.query(sql, params); } finally { await db.exec('reset role'); }
+}
+async function fails(user, sql, params = []) { try { await as(user, sql, params); return false; } catch { return true; } }
+
+const p = await db.query(`select count(*)::int n from public.profiles`);
+ok(p.rows[0].n === 4, 'profile created automatically for each new user');
+
+const team = (await as(users.alice, `select public.create_team('Acme Mechanical') id`)).rows[0].id;
+ok(!!team, 'alice creates a team');
+ok((await as(users.alice, `select role from public.team_members where team_id=$1`, [team])).rows[0]?.role === 'owner', 'creator becomes owner');
+ok(await fails(users.alice, `insert into public.teams (name) values ('Sneaky')`), 'teams cannot be inserted directly (only via create_team)');
+
+await as(users.alice, `insert into public.team_invites (team_id, email, role) values ($1, 'bob@acme.test', 'member'), ($1, 'carol@acme.test', 'manager')`, [team]);
+ok((await as(users.bob, `select * from public.my_invites()`)).rows.length === 1, 'bob sees his pending invite');
+ok((await as(users.dave, `select * from public.my_invites()`)).rows.length === 0, 'dave sees no invites');
+ok(await fails(users.dave, `select public.accept_invite(id) from public.team_invites`) ||
+   (await as(users.dave, `select count(*)::int n from public.team_invites`)).rows[0].n === 0, 'dave cannot see or accept others\' invites');
+for (const u of [users.bob, users.carol]) {
+  const inv = (await as(u, `select id from public.my_invites()`)).rows[0].id;
+  await as(u, `select public.accept_invite($1)`, [inv]);
+}
+const roster = (await as(users.bob, `select user_id, role from public.team_members where team_id=$1 order by role`, [team])).rows;
+ok(roster.length === 3, 'bob and carol joined; roster visible to members');
+ok(await fails(users.bob, `insert into public.team_invites (team_id, email) values ($1, 'x@acme.test')`, [team]), 'members cannot invite');
+ok(!(await fails(users.carol, `insert into public.team_invites (team_id, email, role) values ($1, 'y@acme.test', 'member')`, [team])), 'managers can invite members');
+ok(await fails(users.carol, `insert into public.team_invites (team_id, email, role) values ($1, 'z@acme.test', 'manager')`, [team]), 'managers cannot invite managers');
+
+await as(users.alice, `insert into public.contacts (full_name, team_id, visibility) values
+  ('Personal private', null, 'private'),
+  ('Team private', $1, 'private'),
+  ('Team managers', $1, 'managers'),
+  ('Team shared', $1, 'team')`, [team]);
+const seen = async u => (await as(u, `select full_name from public.contacts order by full_name`)).rows.map(r => r.full_name);
+ok(JSON.stringify(await seen(users.alice)) === JSON.stringify(['Personal private', 'Team managers', 'Team private', 'Team shared']), 'author sees all four of her contacts');
+ok(JSON.stringify(await seen(users.bob)) === JSON.stringify(['Team shared']), 'member sees only team-visible record');
+ok(JSON.stringify(await seen(users.carol)) === JSON.stringify(['Team managers', 'Team shared']), 'manager sees team + managers records, never private ones');
+ok((await seen(users.dave)).length === 0, 'outsider sees nothing');
+ok(await fails(users.dave, `insert into public.contacts (full_name, team_id, visibility) values ('x', $1, 'team')`, [team]), 'outsider cannot write into the team');
+ok(await fails(users.alice, `insert into public.contacts (owner_id, full_name) values ($1, 'Forged')`, [users.bob.id]), 'cannot create records as someone else');
+const upd = await as(users.bob, `update public.contacts set full_name = 'hacked' where full_name = 'Team shared' returning id`);
+ok(upd.rows.length === 0, 'member cannot edit another person\'s record');
+
+const contactId = (await as(users.alice, `select id from public.contacts where full_name='Team shared'`)).rows[0].id;
+await as(users.alice, `insert into public.contact_identities (contact_id, kind, value) values ($1, 'email', 'cust@client.test')`, [contactId]);
+ok((await as(users.bob, `select count(*)::int n from public.contact_identities`)).rows[0].n === 1, 'identities follow their contact\'s visibility');
+ok(await fails(users.bob, `insert into public.contact_identities (contact_id, kind, value) values ($1, 'email', 'evil@x.test')`, [contactId]), 'only the contact\'s author can add identities');
+
+ok(await fails(users.bob, `select * from public.integration_secrets`), 'browser roles cannot read OAuth tokens');
+ok(await fails(users.bob, `insert into public.integration_connections (provider) values ('google')`), 'connections are written by the server only');
+
+ok(await fails(users.alice, `insert into public.meetings (kind, consent_confirmed) values ('meeting', false)`), 'a recorded meeting requires consent confirmation');
+ok(!(await fails(users.alice, `insert into public.meetings (kind, consent_confirmed) values ('notes', false)`)), 'voice notes do not need participant consent');
+
+ok(!(await fails(users.alice, `insert into storage.objects (bucket_id, name) values ('recordings', $1)`, [users.alice.id + '/m1.webm'])), 'user uploads into her own recordings folder');
+ok(await fails(users.bob, `insert into storage.objects (bucket_id, name) values ('recordings', $1)`, [users.alice.id + '/m2.webm']), 'user cannot upload into someone else\'s folder');
+ok((await as(users.bob, `select count(*)::int n from storage.objects`)).rows[0].n === 0, 'user cannot see someone else\'s recordings');
+
+ok((await as(users.bob, `select count(*)::int n from public.profiles`)).rows[0].n === 3, 'teammates can see each other\'s profiles (not outsiders)');
+ok(await fails(users.alice, `delete from public.team_members where user_id = $1 and team_id = $2 returning 1`, [users.alice.id, team]) ||
+   (await as(users.alice, `select count(*)::int n from public.team_members where user_id=$1`, [users.alice.id])).rows[0].n === 1, 'the owner cannot leave her own team');
+await as(users.bob, `delete from public.team_members where user_id = $1 and team_id = $2`, [users.bob.id, team]);
+ok((await seen(users.bob)).length === 0, 'after leaving, bob loses access to team records immediately');
+
+console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll privacy checks passed');
+process.exit(failures ? 1 : 0);
