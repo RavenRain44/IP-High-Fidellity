@@ -24,9 +24,7 @@ await db.exec(`
   grant usage on schema public, auth, storage to anon, authenticated, service_role;
   grant execute on all functions in schema auth to anon, authenticated;
   grant all on all tables in schema storage to authenticated;
-  -- Supabase grants table access to these roles by default; RLS decides which rows.
-  alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
-  alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+  -- Like a new Supabase project: no automatic table access. The migrations must grant it.
 `);
 
 const dir = join(repo, 'supabase', 'migrations');
@@ -112,6 +110,19 @@ ok(await fails(users.alice, `delete from public.team_members where user_id = $1 
    (await as(users.alice, `select count(*)::int n from public.team_members where user_id=$1`, [users.alice.id])).rows[0].n === 1, 'the owner cannot leave her own team');
 await as(users.bob, `delete from public.team_members where user_id = $1 and team_id = $2`, [users.bob.id, team]);
 ok((await seen(users.bob)).length === 0, 'after leaving, bob loses access to team records immediately');
+
+// Signed-out visitors (anon) get nothing.
+async function asAnon(sql) {
+  await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false)"); await db.exec('set role anon');
+  try { return await db.query(sql); } finally { await db.exec('reset role'); }
+}
+let anonBlocked = true;
+for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_secrets']) {
+  try { await asAnon(`select * from public.${t}`); anonBlocked = false; } catch {}
+}
+ok(anonBlocked, 'signed-out visitors cannot read any table');
+let rpcBlocked = true; try { await asAnon('select * from public.my_invites()'); rpcBlocked = false; } catch {}
+ok(rpcBlocked, 'signed-out visitors cannot call account functions');
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll privacy checks passed');
 process.exit(failures ? 1 : 0);

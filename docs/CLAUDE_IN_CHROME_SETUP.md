@@ -31,11 +31,11 @@ Help me set up a Supabase project for my web app "LuMaCo". Work in a new tab. St
    - the project reference ID (the "xxxx" part)
    Do NOT copy any key that is labeled "service_role" or "secret".
 4. Go to Authentication → URL Configuration:
-   - Site URL: https://lumaco.pages.dev
+   - Site URL: https://lumaco-bvs.pages.dev
    - Add these Redirect URLs, one at a time, and save:
      http://localhost:5173/**
-     https://lumaco.pages.dev/**
-     https://*.lumaco.pages.dev/**
+     https://lumaco-bvs.pages.dev/**
+     https://*.lumaco-bvs.pages.dev/**
 5. Go to Authentication → Sign In / Providers → Email:
    - Make sure "Confirm email" is ON.
    - Set the minimum password length to 8 if that setting is on this page (it may be under Authentication → Policies or Attack Protection instead; look there if not).
@@ -76,7 +76,7 @@ Help me set up "Sign in with Google" for my Supabase project. My Supabase projec
    - Scopes: none beyond the defaults (email, profile, openid) for now.
 4. Create an OAuth client (Credentials / Clients → Create client → OAuth client ID → Web application):
    - Name: LuMaCo web
-   - Authorized JavaScript origins: http://localhost:5173 and https://lumaco.pages.dev
+   - Authorized JavaScript origins: http://localhost:5173 and https://lumaco-bvs.pages.dev
    - Authorized redirect URI: https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback
    - Create it. Note the Client ID (it is not secret).
    - STOP at the client secret: tell me to copy it myself. Do not read it back to me or copy it.
@@ -157,7 +157,7 @@ Help me host my web app on Cloudflare Pages from its GitHub repository. Work in 
    - VITE_SUPABASE_URL = <the Project URL from Part 1>  (you may type this one)
    - VITE_SUPABASE_ANON_KEY: STOP and ask me to paste the anon/publishable key myself.
 5. Save and deploy. Wait for the first build to finish. If it fails, open the build log and tell me the first error line.
-6. Open the deployed site (https://lumaco.pages.dev, or whatever *.pages.dev address Cloudflare assigned). Check that:
+6. Open the deployed site (https://lumaco-bvs.pages.dev, or whatever *.pages.dev address Cloudflare assigned). Check that:
    - the LuMaCo sign-in page loads,
    - "Try the demo" opens the demo at /demo/.
    Do not create an account or sign in on the site.
@@ -174,7 +174,88 @@ Sign-in page loads: yes/no; /demo/ loads: yes/no
 Anything that didn't match these instructions: <notes>
 ````
 
-If Cloudflare gave you an address other than `https://lumaco.pages.dev`, tell Claude Code; the Supabase, Google and Microsoft redirect settings need that address added.
+If Cloudflare gave you an address other than `https://lumaco-bvs.pages.dev`, tell Claude Code; the Supabase, Google and Microsoft redirect settings need that address added.
+
+---
+
+## Part 5 — Use the real site address and apply database access rules
+
+Cloudflare assigned `https://lumaco-bvs.pages.dev` (the name `lumaco.pages.dev` was taken), so the
+sign-in redirect settings from Parts 1–2 need that address. The prompt also runs one small database
+update that newer Supabase projects need. My Supabase project ref is in the prompt below; replace it
+if yours differs.
+
+````text
+Help me finish configuring my web app LuMaCo. My Supabase project ref is czdfwbgfncdqqaxwcicg and my live site is https://lumaco-bvs.pages.dev. Work in a new tab. Stop and ask me whenever a step needs me to sign in, approve something, or handle a password or secret — never type those yourself.
+
+1. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/auth/url-configuration
+   - Set Site URL to https://lumaco-bvs.pages.dev and save.
+   - In Redirect URLs, remove any entries containing "lumaco.pages.dev" (without "-bvs"), and make sure exactly these are present, then save:
+     http://localhost:5173/**
+     https://lumaco-bvs.pages.dev/**
+     https://*.lumaco-bvs.pages.dev/**
+2. Open https://console.cloud.google.com/apis/credentials (project LuMaCo), open the OAuth client "LuMaCo web":
+   - Under Authorized JavaScript origins, replace https://lumaco.pages.dev with https://lumaco-bvs.pages.dev (keep http://localhost:5173).
+   - Leave the redirect URI (the supabase.co callback) unchanged. Save.
+3. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/sql/new
+   - Before running anything, show me the SQL below and ask me to confirm. Then paste exactly this SQL into the editor and click Run:
+
+-- Explicit privileges for the Data API.
+--
+-- Newer Supabase projects no longer grant the anon/authenticated roles access to new tables
+-- automatically, so every table needs explicit grants. Row-level security (foundation
+-- migration) still decides which rows each user sees; these grants only decide which
+-- operations are possible at all. Signed-out visitors (anon) get nothing.
+
+revoke all on all tables in schema public from anon;
+revoke execute on all functions in schema public from anon, public;
+
+-- Workspace records: full CRUD, filtered by RLS.
+grant select, insert, update, delete on
+  public.companies, public.contacts, public.contact_identities,
+  public.projects, public.project_contacts,
+  public.interactions, public.meetings, public.meeting_contacts,
+  public.promises
+to authenticated;
+grant select, insert on public.audit_events to authenticated;
+
+-- Accounts and teams.
+grant select, update on public.profiles to authenticated;
+grant select, update, delete on public.teams to authenticated;        -- created via create_team()
+grant select, update, delete on public.team_members to authenticated; -- joined via accept_invite()
+grant select, insert, update on public.team_invites to authenticated;
+
+-- Integrations: users can see and disconnect their own; tokens are server-only.
+grant select, delete on public.integration_connections to authenticated;
+revoke all on public.integration_secrets from authenticated;
+
+-- Server code (Edge Functions) uses the service role, which bypasses RLS but still needs
+-- table privileges on strict projects.
+grant all on all tables in schema public to service_role;
+
+-- Functions: RLS helpers must be callable by signed-in users because policies call them.
+grant execute on function
+  public.team_role_of(uuid), public.is_team_member(uuid), public.is_team_admin(uuid),
+  public.can_read(uuid, uuid, public.visibility), public.can_write_scope(uuid),
+  public.create_team(text), public.my_invites(), public.accept_invite(uuid)
+to authenticated;
+grant execute on all functions in schema public to service_role;
+
+-- Keep future tables and functions locked down by default too.
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from anon, authenticated, public;
+
+   - If Supabase warns that the query contains destructive operations (it may, because of the "revoke" lines), tell me and wait for me to confirm.
+   - Report the result message, or the first error line.
+4. Print exactly this block, filled in:
+
+REPORT BACK — ADDRESS + ACCESS
+Supabase Site URL: <value>
+Supabase Redirect URLs: <list>
+Google JavaScript origins: <list>
+SQL run: success/failed (<message or first error line>)
+Anything that didn't match these instructions: <notes>
+````
 
 ---
 

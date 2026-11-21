@@ -11,7 +11,7 @@ LuMaCo now has two modes on one site:
 | --- | --- | --- |
 | Frontend | React + TypeScript + Vite (`app/`), LuMaCo design tokens copied from the demo | Clean base for real data and security; the demo's layered scripts stay untouched |
 | Auth, database, storage, server code | Supabase (Postgres, Auth, Storage, Edge Functions) | Free tier, row-level security enforces privacy in the database itself |
-| Website hosting | Cloudflare Pages (`lumaco.pages.dev`, custom domain later) | Free, global CDN, builds from GitHub |
+| Website hosting | Cloudflare Pages (`lumaco-bvs.pages.dev`, custom domain later) | Free, global CDN, builds from GitHub |
 | Mobile | Installable web app (PWA) from the same site | Free, no app stores; same codebase |
 | Sign-in | Google, Microsoft, email + password | Google/Microsoft sign-in is also the path to connecting Gmail/Outlook |
 | Email + calendar | Gmail + Google Calendar; Outlook + calendar via Microsoft Graph | First release |

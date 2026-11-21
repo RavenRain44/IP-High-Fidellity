@@ -24,8 +24,8 @@ Steps 1–3 make sign-in, sign-up and teams work. Steps 4–6 are needed when th
    supabase db push
    ```
 5. In **Authentication → URL Configuration**, set:
-   - **Site URL**: `https://lumaco.pages.dev` (or your custom domain later)
-   - **Redirect URLs**: `http://localhost:5173/**`, `https://lumaco.pages.dev/**`, `https://*.lumaco.pages.dev/**`
+   - **Site URL**: `https://lumaco-bvs.pages.dev` (or your custom domain later)
+   - **Redirect URLs**: `http://localhost:5173/**`, `https://lumaco-bvs.pages.dev/**`, `https://*.lumaco-bvs.pages.dev/**`
 6. In **Authentication → Sign In / Providers → Email**, keep **Confirm email** on and set the minimum password length to 8.
 7. Free projects send only a few auth emails per hour. Before inviting real users, add your own SMTP in **Authentication → Emails → SMTP Settings** (e.g. Resend's free tier).
 
@@ -45,7 +45,7 @@ Then open <http://localhost:5173>. Email sign-up works now; Google and Microsoft
 1. At <https://console.cloud.google.com>, create a project named `LuMaCo`.
 2. **APIs & Services → OAuth consent screen**: External, app name `LuMaCo`, your support email, and your Supabase domain (`YOUR-PROJECT-REF.supabase.co`) under authorized domains. Leave it in **Testing** and add yourself and pilot users as test users.
 3. **Credentials → Create credentials → OAuth client ID → Web application**:
-   - Authorized JavaScript origins: `http://localhost:5173`, `https://lumaco.pages.dev`
+   - Authorized JavaScript origins: `http://localhost:5173`, `https://lumaco-bvs.pages.dev`
    - Authorized redirect URI: `https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback`
 4. In Supabase **Authentication → Sign In / Providers → Google**, enable it and paste the client ID and secret.
 
@@ -69,7 +69,7 @@ The Gmail and Calendar integration will reuse this Google project (adding the Gm
    - Build command: `npm run build`
    - Build output directory: `dist`
 4. Environment variables (Production and Preview): `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (same values as `app/.env.local`).
-5. Name the project `lumaco` so the site is `https://lumaco.pages.dev`. Every pull request gets its own preview URL.
+5. Name the project `lumaco`. Cloudflare picks the address; ours is `https://lumaco-bvs.pages.dev` because `lumaco.pages.dev` was taken. Every branch and pull request also gets its own preview URL.
 
 The build serves the real app at `/` and the demo at `/demo/`. The existing GitHub Pages workflow keeps publishing the demo on its own; it can be retired once Cloudflare is live.
 
