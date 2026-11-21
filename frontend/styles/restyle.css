@@ -207,7 +207,8 @@ h1{font-size:21px;line-height:1.2;letter-spacing:-.4px}h2{font-size:15px;letter-
 .km-col .split{grid-template-columns:1fr}
 .km-dash~.footer-note{margin-top:10px}
 @media(max-width:850px){
-  .km-dash{display:flex;flex-direction:column}
+  /* Stretch every card to full width; the desktop grid's align-items:start would shrink them to their content. */
+  .km-dash{display:flex;flex-direction:column;align-items:stretch}
   .km-col{display:contents}
 }
 
