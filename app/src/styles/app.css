@@ -116,6 +116,14 @@ h3{font-size:14px;font-weight:600}
 .grid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:12px;align-items:start}
 .grid3{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
 @media(max-width:1000px){.grid2{grid-template-columns:1fr}}
+/* Ultrawide: the page uses more of the screen and the dashboard opens a third column
+   (Needs Attention | Open Promises | Capture and setup). */
+@media(min-width:1800px){
+  .main{max-width:2400px}
+  .dash{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,.85fr)}
+  .dash>.dash-left{display:contents}
+  .dash>.dash-left>.card{margin-top:0}
+}
 .empty{padding:22px 12px;text-align:center;color:var(--muted)}
 .empty strong{display:block;color:var(--text);margin-bottom:4px}
 .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line-soft)}

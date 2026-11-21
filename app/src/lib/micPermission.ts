@@ -3,6 +3,7 @@ import { recordingSupported } from './recorder';
 
 export type MicState = 'checking' | 'prompt' | 'granted' | 'denied' | 'unsupported';
 export type Platform = 'ios' | 'android' | 'mac' | 'desktop';
+export type Browser = 'firefox' | 'chrome' | 'edge' | 'samsung' | 'safari' | 'other';
 
 export function detectPlatform(): Platform {
   const ua = navigator.userAgent;
@@ -11,6 +12,16 @@ export function detectPlatform(): Platform {
   if (/Android/.test(ua)) return 'android';
   if (/Macintosh/.test(ua)) return 'mac';
   return 'desktop';
+}
+
+export function detectBrowser(): Browser {
+  const ua = navigator.userAgent;
+  if (/Firefox\/|FxiOS\//.test(ua)) return 'firefox';   // FxiOS = Firefox on iPhone/iPad
+  if (/SamsungBrowser\//.test(ua)) return 'samsung';
+  if (/Edg(A|iOS)?\//.test(ua)) return 'edge';
+  if (/Chrome\/|CriOS\//.test(ua)) return 'chrome';
+  if (/Safari\//.test(ua)) return 'safari';
+  return 'other';
 }
 
 /** In-app browsers (Snapchat, Instagram, Facebook, TikTok…) often can't use the microphone at all. */
@@ -23,7 +34,9 @@ export function inAppBrowser(): string | null {
 
 /**
  * Tracks microphone permission and can ask for it. Uses the Permissions API where the browser
- * has it (Chrome, Edge, Firefox, Safari 16+) and falls back to "prompt" elsewhere.
+ * supports the "microphone" name (Chrome, Edge, Safari 16+, current Firefox). Older Firefox and
+ * some in-app browsers throw instead; then the state starts as "prompt" and becomes known once
+ * the browser answers the request.
  */
 export function useMicPermission() {
   const [state, setState] = useState<MicState>(() => (recordingSupported() ? 'checking' : 'unsupported'));
@@ -64,7 +77,23 @@ export function useMicPermission() {
 }
 
 /** How to turn the microphone back on after it was blocked, per platform. */
-export function unblockSteps(platform: Platform, host: string): string[] {
+export function unblockSteps(platform: Platform, host: string, browser: Browser = detectBrowser()): string[] {
+  if (browser === 'firefox') {
+    if (platform === 'android') return [
+      'Tap the lock icon to the left of the address → Microphone → Allow (or “Clear permissions”).',
+      'Or open Firefox’s ⋮ menu → Settings → Site permissions → Microphone, find this site and set it to Allow.',
+      'If Firefox itself can’t use the microphone: Settings app → Apps → Firefox → Permissions → Microphone → Allow.',
+      'Come back here and tap “Try again”.',
+    ];
+    if (platform === 'ios') return [
+      'Open the Settings app → Apps → Firefox → turn Microphone on.',
+      'Come back to Firefox and tap “Try again”, then Allow when asked.',
+    ];
+    return [
+      `Click the crossed-out microphone (or the lock) to the left of ${host} in the address bar and remove “Blocked”.`,
+      'Reload this page and tap “Try again”, then Allow when asked.',
+    ];
+  }
   switch (platform) {
     case 'ios': return [
       `In Safari, tap the “aA” (or page menu) button in the address bar → Website Settings → Microphone → Allow.`,

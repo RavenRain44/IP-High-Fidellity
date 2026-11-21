@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { friendlyError, requireSupabase } from '../lib/supabase';
@@ -9,7 +9,21 @@ type Counts = { connections: number; contacts: number; meetings: number; teams: 
 type OpenPromise = { id: string; title: string; due_on: string | null; direction: string; contacts: { id: string; full_name: string } | null };
 type Pending = { id: string; title: string | null; kind: string; status: string; started_at: string; error: string | null };
 
+/** Ultrawide screens get a third dashboard column (see .dash in app.css). */
+const WIDE = '(min-width: 1800px)';
+function useWide() {
+  const [wide, setWide] = useState(() => window.matchMedia(WIDE).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE);
+    const on = () => setWide(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return wide;
+}
+
 export function Dashboard() {
+  const wide = useWide();
   const { profile, user } = useAuth();
   const sb = requireSupabase();
   const uid = user!.id;
@@ -59,8 +73,8 @@ export function Dashboard() {
       </div>
       {loadErr && <div className="alert error" role="alert">{loadErr}</div>}
 
-      <div className="grid2">
-        <div className="stack">
+      <div className="grid2 dash">
+        <div className="stack dash-left">
           <section className="card" aria-labelledby="na-h">
             <div className="card-head"><h2 id="na-h"><Icon name="alert" /> Needs Attention</h2></div>
             {review.map(m => (
@@ -84,7 +98,7 @@ export function Dashboard() {
           </section>
           <section className="card" aria-labelledby="op-h">
             <div className="card-head"><h2 id="op-h"><Icon name="clipboard" /> Open Promises</h2><span className="pill">{open.length}</span></div>
-            {promises.loading ? <p className="muted">Loading…</p> : open.length ? open.slice(0, 10).map(p => (
+            {promises.loading ? <p className="muted">Loading…</p> : open.length ? open.slice(0, wide ? 25 : 10).map(p => (
               <div className="row" key={p.id}>
                 <div className="grow"><div className="title">{p.title}</div>
                   <div className="small muted">{p.direction === 'made_by_me' ? 'You promised' : 'They promised'}{p.contacts ? <> · <Link to={`/app/contacts?c=${p.contacts.id}`}>{p.contacts.full_name}</Link></> : ''}</div></div>

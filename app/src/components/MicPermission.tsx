@@ -18,7 +18,7 @@ export function MicPermission({ state, error, onRequest }: { state: MicState; er
     return (
       <div className="mic-panel warn" role="alert">
         <strong><Icon name="mic" size="sm" /> {app ? `${app}’s built-in browser can’t use the microphone` : 'This browser can’t record audio'}</strong>
-        <p>{app ? `Open this page in ${platform === 'ios' ? 'Safari' : 'Chrome'} instead: tap the ••• or share menu and choose “Open in ${platform === 'ios' ? 'Safari' : 'browser'}”.`
+        <p>{app ? `Open this page in your browser (${platform === 'ios' ? 'Safari, Chrome or Firefox' : 'Chrome, Firefox or Samsung Internet'}) instead: tap the ••• or share menu and choose “Open in browser”.`
           : 'Use a current version of Chrome, Safari, Edge or Firefox. You can still type notes below.'}</p>
         <button className="btn sm" onClick={copy}><Icon name="copy" size="sm" /> {copied ? 'Link copied' : 'Copy link'}</button>
       </div>
