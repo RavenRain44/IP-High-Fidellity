@@ -6,6 +6,8 @@ import { duration } from '../lib/data';
 import { extensionFor, MAX_BYTES, MicRecorder, recordingSupported, type Recording } from '../lib/recorder';
 import { startProcessing } from '../lib/meetings';
 import { Icon } from '../components/Icon';
+import { MicPermission } from '../components/MicPermission';
+import { useMicPermission } from '../lib/micPermission';
 
 type Kind = 'meeting' | 'notes';
 type Phase = 'ready' | 'recording' | 'paused' | 'recorded' | 'saving';
@@ -28,6 +30,12 @@ export function Capture() {
   const recorder = useRef<MicRecorder | null>(null);
   const startedAt = useRef<string>(new Date().toISOString());
   const supported = recordingSupported();
+  const mic = useMicPermission();
+  // Ask for the microphone as soon as the page opens (once), so recording can start instantly later.
+  const asked = useRef(false);
+  useEffect(() => {
+    if (mic.state === 'prompt' && !asked.current) { asked.current = true; void mic.request(); }
+  }, [mic.state, mic.request]);
   const preview = useMemo(() => (rec ? URL.createObjectURL(rec.blob) : null), [rec]);
   useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
@@ -54,9 +62,8 @@ export function Capture() {
       recorder.current = r; startedAt.current = new Date().toISOString();
       setRec(null); setSeconds(0); setPhase('recording');
     } catch (e) {
-      setError(e instanceof DOMException && e.name === 'NotAllowedError'
-        ? 'Microphone access was blocked. Allow the microphone for this site in your browser settings, then try again.'
-        : 'Couldn’t start the microphone. Check that one is connected and not in use by another app.');
+      if (e instanceof DOMException && e.name === 'NotAllowedError') { void mic.request(); return; } // shows the unblock steps
+      setError('Couldn’t start the microphone. Check that one is connected and not in use by another app.');
     }
   }
   function togglePause() {
@@ -126,6 +133,7 @@ export function Capture() {
             </label>
           )}
 
+          {phase !== 'recorded' && !live && <MicPermission state={mic.state} error={mic.error} onRequest={mic.request} />}
           <div className={`recorder ${phase}`}>
             <div className="orb" aria-hidden="true"><Icon name={phase === 'recorded' ? 'check' : 'mic'} size="lg" /></div>
             <div className="timer" aria-live="off">{duration(seconds) || '0s'}</div>
@@ -135,7 +143,7 @@ export function Capture() {
                 : phase === 'recorded' ? 'Recording ready. Save it, or record again.' : phase === 'saving' ? status : 'Ready'}
             </p>
             <div className="btn-row center-row">
-              {(phase === 'ready' || phase === 'saving') && <button className="btn primary big" onClick={start} disabled={!supported || busy}><Icon name="mic" /> Start recording</button>}
+              {(phase === 'ready' || phase === 'saving') && <button className="btn primary big" onClick={start} disabled={!supported || busy || mic.state === 'denied'}><Icon name="mic" /> Start recording</button>}
               {live && <>
                 <button className="btn" onClick={togglePause}><Icon name={phase === 'paused' ? 'play' : 'pause'} size="sm" /> {phase === 'paused' ? 'Resume' : 'Pause'}</button>
                 <button className="btn primary" onClick={() => void stop()}><Icon name="stop" size="sm" /> Stop</button>
