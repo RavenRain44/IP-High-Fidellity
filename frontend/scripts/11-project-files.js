@@ -19,6 +19,14 @@ function pfSummaryLine(text){
   t = m ? m[1] : t.split('\n').find(Boolean) || '';
   return t.length>240 ? t.slice(0,237).trimEnd()+'…' : t;
 }
+// Sort key for a dated record: its own time when it has one ("7:42 AM"), otherwise the
+// start of that day, so a note saved earlier today still outranks an undated item from today.
+function pfStamp(date, time){
+  let d = new Date(date+'T00:00:00'); if(isNaN(d)) return 0;
+  let m = /^(\d{1,2}):(\d{2})\s*([AP]M)$/i.exec(String(time||'').trim());
+  if(m) d.setHours((+m[1] % 12) + (m[3].toUpperCase()==='PM' ? 12 : 0), +m[2], 0, 0);
+  return +d;
+}
 function pfMentions(p, title){
   let first = p.name.split(' ')[0];
   return new RegExp('\\b'+first.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(title||'');
@@ -29,23 +37,23 @@ function pfEntries(p){
   let x = pfExtra(), out = [], seen = new Set();
   (x.meetings||[]).filter(m=>m.projectId===p.id).forEach(m=>{
     seen.add(m.date+'|'+m.title);
-    out.push({type:m.kind==='notes'?'Voice notes':'Meeting notes', date:m.date, sort:m.savedAt||+new Date(m.date+'T12:00:00'),
+    out.push({type:m.kind==='notes'?'Voice notes':'Meeting notes', date:m.date, sort:m.savedAt||pfStamp(m.date),
       title:m.title, text:pfSummaryLine(m.summary||m.transcript), source:m.source||'Meetings & Recordings',
       people:m.contactIds||(m.contactId?[m.contactId]:[]), private:m.visibility==='private', open:{lw:'view-meeting', id:m.id}});
   });
   (state.interactions||[]).filter(i=>i.projectId===p.id).forEach(i=>{
     if(seen.has(i.date+'|'+i.title)) return;  // the same meeting also lands on the contact timeline
-    out.push({type:i.type, date:i.date, sort:+new Date(i.date+'T12:00:00'), title:i.title, text:pfSummaryLine(i.summary),
+    out.push({type:i.type, date:i.date, sort:pfStamp(i.date, i.time), title:i.title, text:pfSummaryLine(i.summary),
       source:i.source, people:[i.contactId], private:i.visibility==='private'});
   });
   (state.messages||[]).filter(m=>m.projectId===p.id).forEach(m=>{
-    out.push({type:'Email', date:m.date, sort:+new Date(m.date+'T12:00:00')+1, title:m.subject, text:m.preview||'',
+    out.push({type:'Email', date:m.date, sort:pfStamp(m.date, m.time), title:m.subject, text:m.preview||'',
       source:(m.outgoing?'Sent':'Received')+' · '+(m.sender||'Inbox'), people:[m.contactId], open:{mail:m.id}});
   });
   let today_ = today();
   (state.calendar||[]).filter(e=>e.date<=today_ && (e.projectId===p.id || ((p.contactIds||[]).includes(e.contactId) && pfMentions(p, e.title)))).forEach(e=>{
     if(seen.has(e.date+'|'+e.title)) return;
-    out.push({type:'Calendar', date:e.date, sort:+new Date(e.date+'T12:00:00'), title:e.title, text:e.status||'', source:e.source||'Calendar', people:[e.contactId]});
+    out.push({type:'Calendar', date:e.date, sort:pfStamp(e.date, e.time), title:e.title, text:e.status||'', source:e.source||'Calendar', people:[e.contactId]});
   });
   return out.sort((a,b)=>b.sort-a.sort);
 }

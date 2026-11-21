@@ -347,6 +347,8 @@ document.addEventListener('click', e=>{
   let el = e.target.closest('[data-qc]'); if(!el) return;
   e.preventDefault(); e.stopPropagation();
   let a = el.dataset.qc;
+  if(a==='pop-toggle') return qcPopToggle();
+  if(el.closest('#qc-pop-card')) qcPopToggle(false);
   if(a==='record-meeting') return qcStart('meeting', el.dataset.id);
   if(a==='record-notes') return qcStart('notes');
   // Top bar, sidebar and Meetings page: record the current meeting if there is one, else notes.
@@ -393,6 +395,7 @@ document.addEventListener('submit', e=>{
   e.preventDefault(); e.stopPropagation(); qcSave(e.target);
 }, true);
 document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && qcPop.open){qcPopToggle(false); document.querySelector('#qc-pop .qc-bubble')?.focus(); return}
   if(e.key==='Escape' && qc.open){
     let open = document.querySelector('#qc-contacts[open]');
     if(open){open.removeAttribute('open'); open.querySelector('summary')?.focus(); return}
@@ -402,11 +405,73 @@ document.addEventListener('keydown', e=>{
 // Keep "Starts in N min" / "In progress" current while the dashboard is open.
 // Only the panel is swapped, and never while the user is focused inside it.
 function qcRefresh(){
-  let p = document.querySelector?.('.qc-panel');
+  let p = document.querySelector?.('#app .qc-panel');
   if(p && !qc.open && !p.contains(document.activeElement)) p.outerHTML = quickCapturePanel();
   let side = document.querySelector?.('.lw-record');
   if(side) side.innerHTML = icon('mic')+' '+(qcCurrentMeeting()?'Record meeting':'Record notes');
   setTimeout(qcRefresh, 30e3);
 }
 setTimeout(qcRefresh, 30e3);
+
+// ---------- Capture bubble ----------
+// The Capture card scrolls with the page. Once it is fully hidden behind the header,
+// a bubble appears top right; it opens the same card as a dropdown.
+const qcPop = {visible:false, open:false};
+function qcHeaderBottom(){
+  let b = 0;   // fixed top bar, plus any sticky bar stacked directly under it
+  document.querySelectorAll('.topbar,.km-cmdbar').forEach(el=>{let r = el.getBoundingClientRect(); if(r.height && r.top<=b+1 && r.bottom>b) b = r.bottom});
+  return b;
+}
+function qcPopEl(){
+  let w = document.getElementById('qc-pop');
+  if(!w){
+    w = document.createElement('div'); w.id = 'qc-pop'; w.className = 'qc-pop';
+    w.innerHTML = '<button type="button" class="qc-bubble" data-qc="pop-toggle" aria-expanded="false" aria-controls="qc-pop-card" aria-label="Capture: record a meeting or notes" title="Capture">'+
+      '<span class="qc-bubble-dot" hidden></span>'+icon('mic')+'</button>'+
+      '<div class="qc-pop-card" id="qc-pop-card" role="region" aria-label="Capture" hidden></div>';
+    document.body.appendChild(w);
+  }
+  return w;
+}
+function qcPopToggle(open){
+  let w = qcPopEl(), card = w.querySelector('.qc-pop-card'), btn = w.querySelector('.qc-bubble');
+  if(open===undefined) open = !qcPop.open;
+  if(!qcPop.visible) open = false;
+  qcPop.open = open;
+  btn.setAttribute('aria-expanded', String(open));
+  w.classList.toggle('is-open', open);
+  if(open){
+    card.innerHTML = quickCapturePanel().replace('class="card pad qc-panel"','class="qc-panel qc-pop-inner"').replace(/qc-heading/g,'qc-pop-heading');
+    card.style.maxHeight = Math.max(240, innerHeight - w.getBoundingClientRect().top - 72)+'px';
+    card.hidden = false;
+    card.querySelector('[data-qc="record-meeting"],[data-qc="record-notes"]')?.focus({preventScroll:true});
+  } else {
+    card.hidden = true; card.innerHTML = '';
+  }
+}
+function qcPopUpdate(){
+  let panel = document.querySelector('#app .qc-panel'), top = qcHeaderBottom();
+  let show = !!panel && !qc.open && panel.getBoundingClientRect().bottom <= top + 2;
+  if(!show && !qcPop.visible) return;
+  let w = qcPopEl();
+  w.style.top = (top + 10)+'px';
+  if(show !== qcPop.visible){
+    qcPop.visible = show;
+    w.classList.toggle('is-visible', show);
+    w.querySelector('.qc-bubble').tabIndex = show ? 0 : -1;
+    if(!show) qcPopToggle(false);
+  }
+  w.querySelector('.qc-bubble-dot').hidden = !qcCurrentMeeting();
+}
+let qcPopQueued = false;
+function qcPopSchedule(){if(qcPopQueued) return; qcPopQueued = true; requestAnimationFrame(()=>{qcPopQueued = false; qcPopUpdate()})}
+if(typeof requestAnimationFrame==='function' && typeof window.addEventListener==='function'){
+  window.addEventListener('scroll', qcPopSchedule, {passive:true});
+  window.addEventListener('resize', qcPopSchedule);
+  // Re-check after every render (and the restyle's column rearrangement).
+  if(typeof MutationObserver==='function') new MutationObserver(qcPopSchedule).observe(document.getElementById('app'), {childList:true, subtree:true});
+  // Close the dropdown when clicking anywhere else.
+  document.addEventListener('click', e=>{if(qcPop.open && !e.target.closest('#qc-pop')) qcPopToggle(false)});
+  qcPopSchedule();
+}
 render();

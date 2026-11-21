@@ -340,6 +340,8 @@ body[data-page]{--fx-tile:#0f6cbd}
 /* Manager View: no salesperson selected until one is clicked */
 body:not(.km-rep-chosen) .report-panel{display:none}
 body:not(.km-rep-chosen) .rep-card.active{border:1px solid var(--fx-line);background:#fff;padding:9px}
+/* ...but it still gets the normal hover highlight (the rule above outranks .rep-card:hover) */
+body:not(.km-rep-chosen) .rep-card.active:hover{background:var(--fx-hover);border-color:#c7c7c7}
 
 /* ===== Round 9 ===== */
 /* Collapsible headings nested one level down (Relationship Snapshot) look like the others */

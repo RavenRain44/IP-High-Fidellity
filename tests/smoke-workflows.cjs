@@ -51,7 +51,7 @@ assert.ok(prof.indexOf('Project file')<prof.indexOf('Relationship Snapshot'),'Pr
 assert.match(prof,/id="pf-select"/,'Jamie Chen has several projects, so the picker should show');
 const pfOrder=JSON.parse(vm.runInContext(`JSON.stringify(pfProjectsFor(contact('c3')).map(f=>[f.p.id,f.updated]))`,sandbox));
 assert.ok(pfOrder.every((x,i,a)=>!i||a[i-1][1]>=x[1]),'Project files should be sorted by most recently updated');
-vm.runInContext(`LuMaCoWorkflows.extra.meetings.unshift({id:'mT',date:today(),savedAt:Date.now()+1e6,title:'Westlake test notes',contactIds:['c3'],contactId:'c3',projectId:'pr3',summary:'Summary\\nTest line.',transcript:'x',visibility:'private',kind:'notes'});ui.projectFile={};nav('contacts')`,sandbox);
+vm.runInContext(`LuMaCoWorkflows.extra.meetings.unshift({id:'mT',date:today(),savedAt:Date.now(),title:'Westlake test notes',contactIds:['c3'],contactId:'c3',projectId:'pr3',summary:'Summary\\nTest line.',transcript:'x',visibility:'private',kind:'notes'});ui.projectFile={};nav('contacts')`,sandbox);
 prof=nodes.app.innerHTML;
 assert.match(prof,/<option value="pr3" selected>Westlake Office Expansion · most recent/,'A newly filed note should make its project the default');
 assert.match(prof,/Westlake test notes/,'Filed note should appear in the project log');

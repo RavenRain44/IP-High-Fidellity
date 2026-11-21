@@ -162,6 +162,8 @@ h1{font-size:21px;line-height:1.2;letter-spacing:-.4px}h2{font-size:15px;letter-
 
 /* Side-by-side cards keep their own height instead of stretching into empty space */
 .split{align-items:start}
+/* Except Manager View's Team Needs Attention: it fills the row, leaving room below for more items */
+.split>.team-attention{align-self:stretch}
 .rep-card{border-radius:8px}.rep-card.active{padding:8px}.rep-card strong{font-size:13.5px}
 
 /* Phone top bar: title only, actions as icon buttons */
@@ -209,11 +211,8 @@ h1{font-size:21px;line-height:1.2;letter-spacing:-.4px}h2{font-size:15px;letter-
   .km-col{display:contents}
 }
 
-/* ---------- Round 4: Capture stays in place while the dashboard scrolls ----------
-   Desktop only; the rest of the right column slides up beneath it. */
-@media(min-width:851px) and (min-height:640px){
-  .km-col>.qc-panel{position:sticky;top:58px;z-index:6;box-shadow:0 -12px 0 var(--background),0 4px 14px rgba(19,40,68,.10)}
-}
+/* Round 4 made Capture sticky. It now scrolls with the page and collapses into a
+   floating Capture bubble once it is off screen (see .qc-pop in quick-capture.css). */
 
 /* Round 5: the greeting moves to the top of the left column, so Capture starts
    right under the top bar and never moves at all */

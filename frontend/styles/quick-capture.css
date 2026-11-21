@@ -4,7 +4,7 @@
 .attention-split>.dashboard-first{grid-area:attention}
 .attention-split>.qc-panel{grid-area:capture}
 
-.qc-panel{border-top:3px solid var(--navy);display:flex;flex-direction:column;gap:14px;position:sticky;top:93px}
+.qc-panel{border-top:3px solid var(--navy);display:flex;flex-direction:column;gap:14px}
 .qc-panel .section-title,.qc-panel .section-desc{margin-bottom:0}
 .qc-panel .section-desc{margin-top:-8px}
 .qc-tile{border:1px solid var(--line);border-radius:11px;padding:16px;background:#fbfcfe;display:flex;flex-direction:column;gap:6px}
@@ -75,5 +75,25 @@
 
 @media(max-width:900px){
   .attention-split{grid-template-columns:minmax(0,1fr);grid-template-areas:"capture" "attention";gap:16px}
-  .qc-panel{position:static}
 }
+
+/* Capture bubble: appears top right once the Capture card has scrolled off screen,
+   and opens the same card as a dropdown. */
+.qc-pop{position:fixed;right:18px;top:58px;z-index:40;pointer-events:none}
+.qc-bubble{position:relative;width:46px;height:46px;border-radius:50%;border:0;display:grid;place-items:center;cursor:pointer;
+  background:var(--fx-accent,var(--navy));color:#fff;box-shadow:0 6px 18px rgba(16,38,64,.28),0 0 0 3px #fff;
+  opacity:0;transform:scale(.6);transition:opacity .18s ease,transform .18s ease;pointer-events:none}
+.qc-bubble .icon{width:21px;height:21px}
+.qc-bubble:hover{filter:brightness(1.1)}
+.qc-bubble:focus-visible{outline:2px solid var(--fx-accent,var(--navy));outline-offset:4px}
+.qc-pop.is-visible .qc-bubble{opacity:1;transform:scale(1);pointer-events:auto}
+.qc-pop.is-open .qc-bubble{transform:scale(.92)}
+.qc-bubble-dot{position:absolute;top:1px;right:1px;width:12px;height:12px;border-radius:50%;background:var(--red);box-shadow:0 0 0 2px #fff}
+.qc-bubble-dot[hidden]{display:none}
+.qc-pop-card{position:absolute;top:56px;right:0;width:min(360px,calc(100vw - 32px));overflow:auto;overscroll-behavior:contain;
+  background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 48px rgba(11,29,51,.24);
+  transform-origin:top right;animation:qc-pop-in .16s ease-out;pointer-events:auto}
+.qc-pop-card[hidden]{display:none}
+.qc-pop-inner{border:0!important;padding:12px 14px;box-shadow:none}
+@keyframes qc-pop-in{from{opacity:0;transform:scale(.94) translateY(-6px)}to{opacity:1;transform:none}}
+@media(max-width:580px){.qc-pop{right:12px}.qc-pop-card{width:calc(100vw - 24px)}}
