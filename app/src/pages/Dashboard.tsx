@@ -63,7 +63,7 @@ export function Dashboard() {
     .order('created_at', { ascending: false }).limit(10).overrideTypes<Suggested[], { merge: false }>(), [uid]);
   const events = useQuery<CalEvent[]>(() => sb.from('calendar_events').select('id,title,starts_at,ends_at,all_day,location,meeting_url,html_link,contact_ids')
     .gte('starts_at', new Date(Date.now() - 60 * 60_000).toISOString()).lt('starts_at', new Date(Date.now() + 7 * 86400000).toISOString())
-    .neq('my_response', 'declined').order('starts_at').limit(wide ? 14 : 6), [wide]);
+    .or('my_response.is.null,my_response.neq.declined').order('starts_at').limit(wide ? 14 : 6), [wide]);
   const eventContactIds = [...new Set((events.data ?? []).flatMap(e => e.contact_ids))];
   const names = useQuery<{ id: string; full_name: string }[]>(() => sb.from('contacts').select('id,full_name').in('id', eventContactIds.length ? eventContactIds : ['00000000-0000-0000-0000-000000000000']), [eventContactIds.join()]);
   const nameOf = (id: string) => names.data?.find(n => n.id === id)?.full_name;

@@ -73,11 +73,15 @@ async function syncConnection(ctx: Ctx, conn: Conn) {
 
   try {
     const token = await accessToken(ctx, conn.id);
-    const { data: contacts } = await ctx.userDb.from('contacts').select('id,contact_identities(kind,value)').limit(5000);
+    const { data: contacts } = await ctx.userDb.from('contacts').select('id,contact_identities(kind,value,created_at)').limit(5000);
     const idx = buildContactIndex(contacts ?? []);
+    // Addresses saved since the last sync get their past 30 days of email, not just new mail.
+    const added = new Set((contacts ?? []).flatMap(c => (c.contact_identities ?? [])
+      .filter(i => i.kind === 'email' && (!conn.last_synced_at || new Date(i.created_at) > new Date(conn.last_synced_at)))
+      .map(i => i.value.trim().toLowerCase())));
     const has = (s: string) => conn.scopes.some(x => x.endsWith(s));
     const cal = has('/calendar.readonly') ? await syncCalendar(ctx, conn, token, idx, runStart) : null;
-    const mail = has('/gmail.readonly') ? await syncGmail(ctx, conn, token, idx, runStart) : null;
+    const mail = has('/gmail.readonly') ? await syncGmail(ctx, conn, token, idx, added, runStart) : null;
     await admin.from('integration_connections').update({ status: 'connected', last_synced_at: runStart.toISOString(), last_error: null, sync_started_at: null }).eq('id', conn.id);
     return { email: conn.account_email, events: cal?.events ?? null, messages: mail?.messages ?? null, threads: mail?.threads ?? null, suggestions: mail?.suggestions ?? null, warning: mail?.warning };
   } catch (e) {
@@ -164,15 +168,18 @@ async function syncCalendar(ctx: Ctx, conn: Conn, token: string, idx: ContactInd
 }
 
 // ---------------------------------------------------------------------------------------
-async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex, runStart: Date) {
+async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex, added: Set<string>, runStart: Date) {
   const emails = [...idx.keys()];
   if (!emails.length) return { messages: 0, threads: 0, suggestions: 0, warning: 'Add email addresses to your contacts to see their emails here.' };
-  const since = conn.last_synced_at ? new Date(new Date(conn.last_synced_at).getTime() - 2 * 3600_000) : new Date(runStart.getTime() - 30 * DAY);
-  const after = Math.floor(since.getTime() / 1000);
+  const backfill = new Date(runStart.getTime() - 30 * DAY);
+  const recent = conn.last_synced_at ? new Date(new Date(conn.last_synced_at).getTime() - 2 * 3600_000) : backfill;
+  const older = emails.filter(e => !added.has(e)), newer = emails.filter(e => added.has(e));
+  const since = newer.length ? backfill : recent;
+  const queries = [...gmailQueries(older, Math.floor(recent.getTime() / 1000)), ...gmailQueries(newer, Math.floor(backfill.getTime() / 1000))];
 
   // 1. Ids of matching messages (Gmail does the contact filtering).
   const ids = new Map<string, string>(); // message id -> thread id
-  for (const q of gmailQueries(emails, after)) {
+  for (const q of queries) {
     let page = '';
     do {
       const p = new URLSearchParams({ q, maxResults: '100', ...(page ? { pageToken: page } : {}) });
