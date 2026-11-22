@@ -419,6 +419,73 @@ Tell Claude Code "the CLI is signed in" and it will deploy the `process-meeting`
 
 ---
 
+## Part 7 — Gmail and Google Calendar (and rotate the Google client secret)
+
+Turns on the Google integration. It uses the same Google Cloud project and OAuth client as Google
+sign-in (Part 2). Claude Code already deployed the server side; this part switches on the APIs, adds
+the new redirect address, and stores the client ID and a **new** client secret in Supabase. The old
+secret was exposed in a terminal earlier, so this replaces it everywhere.
+
+While the app is in Google's "Testing" mode: only test users you list can connect (up to 100), they
+see a "Google hasn't verified this app" screen (choose Continue), and Google makes them reconnect every
+7 days. The Integrations page shows a Reconnect button when that happens.
+
+````text
+Help me connect Gmail and Google Calendar to my app LuMaCo. Use the Google Cloud project and OAuth client I already use for "Sign in with Google" on LuMaCo. My Supabase project ref is czdfwbgfncdqqaxwcicg. Work in a new tab. Stop and ask me whenever a step needs me to sign in, accept terms, or handle a secret or password — never type, read back, or copy a client secret yourself.
+
+1. Turn on the two Google APIs (select the LuMaCo project in the project picker first):
+   - https://console.cloud.google.com/apis/library/gmail.googleapis.com → Enable (or confirm it says "API enabled").
+   - https://console.cloud.google.com/apis/library/calendar-json.googleapis.com → Enable (or confirm).
+
+2. Add the read-only scopes. Open https://console.cloud.google.com/auth/scopes
+   - Click "Add or remove scopes". In "Manually add scopes", paste these two lines and click "Add to table":
+     https://www.googleapis.com/auth/gmail.readonly
+     https://www.googleapis.com/auth/calendar.readonly
+   - Make sure both are ticked, click Update, then Save.
+   - Do not submit the app for verification.
+
+3. Test users. Open https://console.cloud.google.com/auth/audience
+   - Confirm Publishing status is "Testing". Don't change it.
+   - Under Test users, click "Add users" and STOP: ask me which Google addresses to add, and let me type them.
+
+4. Redirect address and a new client secret. Open https://console.cloud.google.com/auth/clients and open the Web client LuMaCo uses for sign-in.
+   - Under "Authorized redirect URIs" click "Add URI" and enter exactly:
+     https://czdfwbgfncdqqaxwcicg.supabase.co/functions/v1/google-connect
+     Keep the existing supabase.co/auth/v1/callback URI. Save.
+   - Under Client secrets click "Add secret". STOP before the new secret is shown and tell me to copy it myself. Do not read it. Do not disable the old secret yet.
+   - Tell me the Client ID shown on this page is needed in step 5 (it is not secret, but let me copy it).
+
+5. Store both in Supabase.
+   a. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/auth/providers and open Google.
+      STOP and ask me to paste the new client secret into "Client Secret (for OAuth)" myself, then save.
+   b. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/functions/secrets
+      - Add a secret named GOOGLE_CLIENT_ID: type the name, then STOP and ask me to paste the client ID.
+      - Add a secret named GOOGLE_CLIENT_SECRET: type the name, then STOP and ask me to paste the new secret.
+      - After I say done, save. Confirm GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET and TOKEN_ENCRYPTION_KEY appear in the list (values stay hidden).
+
+6. Check sign-in still works with the new secret: open https://lumaco-bvs.pages.dev/signin in a private window and ask me to sign in with Google myself. Ask me whether it worked.
+   - Only if it worked: go back to the OAuth client from step 4 and STOP to let me disable and delete the OLD client secret myself (the one created earlier, not today).
+
+7. Print exactly this block, filled in:
+
+REPORT BACK — GOOGLE INTEGRATION
+Gmail API enabled: yes/no
+Calendar API enabled: yes/no
+Scopes added (gmail.readonly, calendar.readonly): yes/no
+Publishing status: <Testing/other>, test users added: <count>
+Redirect URI added: yes/no
+New client secret created and old one deleted: yes/no/old one still active
+Supabase Google provider updated with new secret: yes/no
+Edge Function secrets present: GOOGLE_CLIENT_ID yes/no, GOOGLE_CLIENT_SECRET yes/no, TOKEN_ENCRYPTION_KEY yes/no
+Google sign-in still works: yes/no
+Anything that didn't match these instructions: <notes>
+````
+
+Then open https://lumaco-bvs.pages.dev/app/integrations, click **Connect Google**, and allow access.
+Tick both Gmail and Calendar on Google's screen.
+
+---
+
 ## Then, back in Claude Code
 
 Paste all the report blocks plus your **anon / publishable key**, and say "finish the setup". Claude Code will:

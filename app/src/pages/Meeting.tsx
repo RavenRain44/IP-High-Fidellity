@@ -125,6 +125,7 @@ function Review({ meeting, contacts, projects, onFiled, onCancel }: {
     if (filed || !why) return null;
     const w = why[kind];
     if (w === 'transcript') return <p className="hint ok"><Icon name="sparkle" size="sm" /> Found in the {meeting.transcript_text ? 'conversation' : 'notes'}</p>;
+    if (w === 'calendar') return <p className="hint ok"><Icon name="calendar" size="sm" /> Invited to this calendar event</p>;
     if (w === 'recent') return <p className="hint"><Icon name="calendar" size="sm" /> Not mentioned, so suggested from your last meeting{why.recent_title ? `: ${why.recent_title}` : ''}</p>;
     return <p className="hint">{kind === 'contacts' ? 'No one identified. Pick people, or leave it as a personal note.' : 'No project identified.'}</p>;
   };

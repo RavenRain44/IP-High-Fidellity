@@ -18,7 +18,9 @@ export function Capture() {
   const nav = useNavigate();
   const [params] = useSearchParams();
   const [kind, setKind] = useState<Kind>(params.get('kind') === 'notes' ? 'notes' : 'meeting');
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState(() => params.get('title')?.slice(0, 160) ?? '');
+  // Recording from a calendar event: its attendees help match contacts.
+  const eventId = /^[0-9a-f-]{36}$/i.test(params.get('event') ?? '') ? params.get('event') : null;
   const [consent, setConsent] = useState(false);
   const [typed, setTyped] = useState('');
   const [keepAudio, setKeepAudio] = useState(false);
@@ -98,7 +100,7 @@ export function Capture() {
       const { error } = await sb.from('meetings').insert({
         id, kind, title: title.trim() || null, started_at: startedAt.current, duration_sec: rec?.seconds ?? null,
         consent_confirmed: kind === 'meeting' ? consent : false, audio_path: audioPath, typed_notes: typed.trim() || null,
-        keep_audio: keepAudio, status: 'uploaded',
+        keep_audio: keepAudio, status: 'uploaded', calendar_ref: eventId,
       });
       if (error) throw error;
       setStatus('Starting transcription…');

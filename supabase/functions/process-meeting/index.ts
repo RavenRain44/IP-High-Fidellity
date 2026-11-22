@@ -19,7 +19,7 @@ const env = (...names: string[]) => names.map(n => Deno.env.get(n)).find(Boolean
 
 type Meeting = {
   id: string; owner_id: string; kind: 'meeting' | 'notes' | 'call'; title: string | null; started_at: string;
-  audio_path: string | null; typed_notes: string | null; keep_audio: boolean; status: string;
+  audio_path: string | null; typed_notes: string | null; keep_audio: boolean; status: string; calendar_ref: string | null;
 };
 
 Deno.serve(async (req) => {
@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   if (typeof meeting_id !== 'string' || !/^[0-9a-f-]{36}$/i.test(meeting_id)) return json({ error: 'meeting_id is required' }, 400);
 
   const { data: meeting } = await userDb.from('meetings')
-    .select('id,owner_id,kind,title,started_at,audio_path,typed_notes,keep_audio,status')
+    .select('id,owner_id,kind,title,started_at,audio_path,typed_notes,keep_audio,status,calendar_ref')
     .eq('id', meeting_id).eq('owner_id', user.id).maybeSingle<Meeting>();
   if (!meeting) return json({ error: 'Meeting not found' }, 404);
   if (meeting.status === 'transcribing' || meeting.status === 'extracting') return json({ status: meeting.status }, 202);
@@ -96,6 +96,16 @@ async function processMeeting(ctx: {
 
     // Nobody or no project identified: suggest the ones from your most recent filed meeting.
     const why = { contacts: draft.contact_ids.length ? 'transcript' : 'none', project: draft.project_id ? 'transcript' : 'none', recent_title: null as string | null };
+    // Recorded from a calendar event: the invited contacts took part, whether or not they were named.
+    if (meeting.calendar_ref) {
+      const { data: ev } = await userDb.from('calendar_events').select('contact_ids').eq('id', meeting.calendar_ref).maybeSingle();
+      const known = new Set(contacts.map(c => c.id));
+      const invited = ((ev?.contact_ids ?? []) as string[]).filter(id => known.has(id));
+      if (invited.length) {
+        if (!draft.contact_ids.length) why.contacts = 'calendar';
+        draft.contact_ids = [...new Set([...draft.contact_ids, ...invited])];
+      }
+    }
     if (!draft.contact_ids.length || !draft.project_id) {
       const { data: recent } = await userDb.from('meetings').select('id,title,project_id,meeting_contacts(contact_id)')
         .eq('owner_id', ctx.userId).eq('status', 'reviewed').neq('kind', 'notes').neq('id', meeting.id)

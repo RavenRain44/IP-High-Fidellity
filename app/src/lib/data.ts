@@ -51,7 +51,7 @@ export type DraftPromise = { title: string; direction: 'made_by_me' | 'made_to_m
 export type Suggestions = {
   title: string; notes: string; contact_ids: string[]; project_id: string | null; promises: DraftPromise[];
   speakers: { label: string; name: string | null }[];
-  why?: { contacts: 'transcript' | 'recent' | 'none'; project: 'transcript' | 'recent' | 'none'; recent_title: string | null };
+  why?: { contacts: 'transcript' | 'recent' | 'calendar' | 'none'; project: 'transcript' | 'recent' | 'none'; recent_title: string | null };
 };
 export type MeetingStatus = 'recording' | 'uploaded' | 'transcribing' | 'extracting' | 'ready' | 'reviewed' | 'failed';
 export type Meeting = Scoped & {

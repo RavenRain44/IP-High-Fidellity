@@ -142,13 +142,44 @@ await as(users.alice, `select public.finalize_meeting($1, 'Private voice note', 
 ok((await as(users.alice, `select visibility from public.meetings where id=$1`, [priv])).rows[0].visibility === 'private', 'personal-workspace notes are always private');
 ok((await as(users.carol, `select count(*)::int n from public.meetings where id=$1`, [priv])).rows[0].n === 0, 'managers never see personal notes');
 
+// Phase 3: Google Calendar and Gmail. Rows are written by the sync function (service role).
+async function asService(sql, params = []) {
+  await db.exec('reset role'); await db.exec('set role service_role');
+  try { return await db.query(sql, params); } finally { await db.exec('reset role'); }
+}
+const conn = (await asService(`insert into public.integration_connections (user_id, provider, account_email) values ($1, 'google', $2) returning id`, [users.alice.id, users.alice.email])).rows[0].id;
+await asService(`insert into public.integration_secrets (connection_id, refresh_token) values ($1, 'v1:encrypted')`, [conn]);
+await asService(`insert into public.calendar_events (owner_id, connection_id, source_ref, title, starts_at) values ($1, $2, 'evt1', 'Riverside walkthrough', now() + interval '1 day')`, [users.alice.id, conn]);
+const thread = (await asService(`insert into public.email_threads (owner_id, connection_id, thread_id, subject, last_message_at, last_direction, needs_reply) values ($1, $2, 't1', 'Revised drawings', now(), 'inbound', true) returning id`, [users.alice.id, conn])).rows[0].id;
+await asService(`insert into public.oauth_states (nonce, user_id, provider) values ('n1', $1, 'google')`, [users.alice.id]);
+ok((await as(users.alice, `select account_email from public.integration_connections`)).rows.length === 1, 'you can see your own connected Google account');
+ok((await as(users.carol, `select count(*)::int n from public.integration_connections`)).rows[0].n === 0, 'teammates cannot see your connected accounts');
+ok(await fails(users.alice, `select refresh_token from public.integration_secrets`), 'Google tokens are unreadable even by their owner (server only)');
+ok(await fails(users.alice, `select * from public.oauth_states`), 'sign-in state values are server only');
+ok(await fails(users.alice, `insert into public.integration_connections (user_id, provider) values ($1, 'google')`, [users.alice.id]), 'only the server can add a connection');
+ok((await as(users.alice, `select count(*)::int n from public.calendar_events`)).rows[0].n === 1, 'you see your own calendar events');
+ok((await as(users.carol, `select count(*)::int n from public.calendar_events`)).rows[0].n === 0, 'your manager cannot see your calendar');
+ok((await as(users.carol, `select count(*)::int n from public.email_threads`)).rows[0].n === 0, 'your manager cannot see your email');
+ok(await fails(users.alice, `insert into public.calendar_events (owner_id, connection_id, source_ref, starts_at) values ($1, $2, 'x', now())`, [users.alice.id, conn]), 'calendar events cannot be forged from the browser');
+await as(users.alice, `update public.email_threads set dismissed_at = now() where id = $1`, [thread]);
+ok((await as(users.alice, `select dismissed_at from public.email_threads where id=$1`, [thread])).rows[0].dismissed_at !== null, 'you can mark an email as not needing a reply');
+ok(await fails(users.alice, `update public.email_threads set subject = 'x' where id = $1`, [thread]), 'synced email content cannot be edited');
+await as(users.carol, `update public.email_threads set dismissed_at = null where id = $1`, [thread]);
+ok((await as(users.alice, `select dismissed_at from public.email_threads where id=$1`, [thread])).rows[0].dismissed_at !== null, 'others cannot change your email threads');
+const sugg = (await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'gmail', 'm1') returning id`, [users.alice.id])).rows[0].id;
+ok(await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'gmail', 'm1')`, [users.alice.id]).then(() => false, () => true), 'the same email promise is never suggested twice');
+await as(users.alice, `update public.promises set status = 'open' where id = $1`, [sugg]);
+ok((await as(users.alice, `select status from public.promises where id=$1`, [sugg])).rows[0].status === 'open', 'you can keep a suggested promise');
+await as(users.alice, `delete from public.integration_connections where id = $1`, [conn]);
+ok((await asService(`select (select count(*) from public.calendar_events)::int + (select count(*) from public.email_threads)::int + (select count(*) from public.integration_secrets)::int n`)).rows[0].n === 0, 'disconnecting deletes the tokens, events and email threads');
+
 // Signed-out visitors (anon) get nothing.
 async function asAnon(sql) {
   await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false)"); await db.exec('set role anon');
   try { return await db.query(sql); } finally { await db.exec('reset role'); }
 }
 let anonBlocked = true;
-for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_secrets']) {
+for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_secrets', 'calendar_events', 'email_threads', 'oauth_states']) {
   try { await asAnon(`select * from public.${t}`); anonBlocked = false; } catch {}
 }
 ok(anonBlocked, 'signed-out visitors cannot read any table');

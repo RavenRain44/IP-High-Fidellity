@@ -1,6 +1,8 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { requireSupabase } from '../lib/supabase';
 import { useQuery, type Connection } from '../lib/data';
+import { connectGoogle, connectResult, disconnectGoogle, syncGoogle, type SyncResult } from '../lib/google';
 import { GoogleLogo, Icon, MicrosoftLogo } from '../components/Icon';
 
 type Card = {
@@ -9,23 +11,74 @@ type Card = {
   logo: ReactNode;
   what: string[];
   note: string;
+  live?: boolean;
 };
 
 const CARDS: Card[] = [
-  { id: 'google', name: 'Google', logo: <GoogleLogo />, what: ['Gmail: sort conversations, detect replies and promises', 'Google Calendar: meetings, briefings, attendance'],
-    note: 'Read-only access. Only approved contacts are tracked.' },
+  { id: 'google', name: 'Google', logo: <GoogleLogo />, live: true,
+    what: ['Gmail: email with your contacts on their timelines, replies you owe in Needs Attention, promises suggested for review', 'Google Calendar: upcoming meetings with contacts, one tap to record'],
+    note: 'Read-only. LuMaCo only downloads email to or from addresses saved on your contacts; nothing else in your inbox is read.' },
   { id: 'microsoft', name: 'Microsoft 365', logo: <MicrosoftLogo />, what: ['Outlook mail: sort conversations, detect replies and promises', 'Outlook calendar: meetings, briefings, attendance'],
-    note: 'Work accounts may need your IT admin to approve LuMaCo.' },
+    note: 'Coming next. Work accounts may need your IT admin to approve LuMaCo.' },
   { id: 'twilio', name: 'Business phone & SMS', logo: <Icon name="phone" />, what: ['A LuMaCo business number for calls and texts', 'Calls over 2:00 count as engagement; consent prompt on recorded calls'],
-    note: 'Phones don’t let apps read your normal call log or texts, so calls and texts go through a business number.' },
-  { id: 'ai', name: 'Transcription & AI notes', logo: <Icon name="sparkle" />, what: ['Speech-to-text with speaker labels (Deepgram)', 'Notes, people, project and promises extracted for your review (Claude)'],
+    note: 'Coming later. Phones don’t let apps read your normal call log or texts, so calls and texts go through a business number.' },
+  { id: 'ai', name: 'Transcription & AI notes', logo: <Icon name="sparkle" />, live: true, what: ['Speech-to-text with speaker labels (Deepgram)', 'Notes, people, project and promises extracted for your review (Claude)'],
     note: 'Audio is deleted after transcription unless you choose to keep it.' },
 ];
 
+function summary(r: SyncResult): string {
+  if (r.error) return r.error;
+  if (r.skipped) return 'A sync is already running.';
+  const parts = [
+    r.events != null && `${r.events} calendar event${r.events === 1 ? '' : 's'}`,
+    r.messages != null && `${r.messages} new email${r.messages === 1 ? '' : 's'} with contacts`,
+    r.suggestions ? `${r.suggestions} promise${r.suggestions === 1 ? '' : 's'} to review` : null,
+  ].filter(Boolean);
+  return `Synced ${r.email}: ${parts.join(', ') || 'nothing new'}.${r.warning ? ` ${r.warning}` : ''}`;
+}
+
 export function Integrations() {
   const sb = requireSupabase();
-  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error'), []);
+  const [params, setParams] = useSearchParams();
+  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error').order('connected_at'), []);
   const byProvider = (p: string) => (conns.data ?? []).filter(c => c.provider === p);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(() => connectResult(params));
+  const [busy, setBusy] = useState('');
+
+  async function sync() {
+    setBusy('sync');
+    const r = await syncGoogle();
+    setBusy('');
+    if (r.error) setNotice({ ok: false, text: r.error });
+    else setNotice({ ok: !(r.results ?? []).some(x => x.error), text: (r.results ?? []).map(summary).join(' ') || 'No Google account connected.' });
+    void conns.reload();
+  }
+
+  // Back from Google's consent screen: show the result once, then run the first sync.
+  const handled = useRef(false);
+  useEffect(() => {
+    if (handled.current || !params.get('google')) return;
+    handled.current = true;
+    const ok = params.get('google') === 'connected';
+    setParams({}, { replace: true });
+    if (ok) void sync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function connect() {
+    setBusy('connect');
+    const err = await connectGoogle();
+    if (err) { setNotice({ ok: false, text: err }); setBusy(''); }
+  }
+
+  async function disconnect(c: Connection) {
+    if (!confirm(`Disconnect ${c.account_email}? LuMaCo stops reading it and deletes its synced calendar events, email threads and email timeline entries. Promises you kept stay.`)) return;
+    setBusy(c.id);
+    const err = await disconnectGoogle(c.id);
+    setBusy('');
+    setNotice(err ? { ok: false, text: err } : { ok: true, text: `${c.account_email} disconnected.` });
+    void conns.reload();
+  }
 
   return (
     <>
@@ -33,9 +86,7 @@ export function Integrations() {
         <div><h1>Integrations</h1><p>Connect the tools you already use. LuMaCo reads them so you don’t have to update a CRM.</p></div>
       </div>
       {conns.error && <div className="alert error" role="alert">{conns.error}</div>}
-      <div className="alert info" role="status">
-        Connecting accounts is the next part of the build. Sign-in, teams and your secure workspace are live now; the Connect buttons below switch on as each integration is released.
-      </div>
+      {notice && <div className={`alert ${notice.ok ? 'ok' : 'error'}`} role="status">{notice.text}</div>}
       <div className="grid3">
         {CARDS.map(card => {
           const mine = card.id === 'ai' ? [] : byProvider(card.id);
@@ -45,15 +96,23 @@ export function Integrations() {
               <ul>{card.what.map(w => <li key={w}>{w}</li>)}</ul>
               <p className="small muted">{card.note}</p>
               {mine.map(c => (
-                <div className="row" key={c.id}>
+                <div className="row conn-row" key={c.id}>
                   <div className="grow"><div className="title">{c.account_email ?? 'Connected account'}</div>
-                    <div className="small muted">{c.last_error ? `Error: ${c.last_error}` : c.last_synced_at ? `Synced ${new Date(c.last_synced_at).toLocaleString()}` : 'Waiting for first sync'}</div></div>
-                  <span className={`pill ${c.status === 'connected' ? 'ok' : ''}`}>{c.status}</span>
+                    <div className={`small ${c.last_error ? 'error-text' : 'muted'}`}>{c.status === 'syncing' ? 'Syncing…' : c.last_error ? c.last_error : c.last_synced_at ? `Synced ${new Date(c.last_synced_at).toLocaleString()}` : 'Waiting for first sync'}</div></div>
+                  {/reconnect/i.test(c.last_error ?? '')
+                    ? <button className="btn sm primary" onClick={connect} disabled={!!busy}>Reconnect</button>
+                    : <span className={`pill ${c.status === 'connected' ? 'ok' : ''}`}>{c.status === 'error' ? 'Error' : c.status === 'syncing' ? 'Syncing' : 'Connected'}</span>}
+                  {card.id === 'google' && <button className="btn sm" onClick={() => disconnect(c)} disabled={!!busy} aria-label={`Disconnect ${c.account_email}`}>{busy === c.id ? 'Disconnecting…' : 'Disconnect'}</button>}
                 </div>
               ))}
               <div className="foot">
-                <span className="pill">{card.id === 'ai' ? 'Included' : mine.length ? `${mine.length} connected` : 'Not connected'}</span>
-                <button className="btn sm" disabled title="Available in the next release">{card.id === 'ai' ? 'Set up' : 'Connect'}</button>
+                <span className="pill">{card.id === 'ai' ? 'Included' : mine.length ? `${mine.length} connected` : card.live ? 'Not connected' : 'Coming soon'}</span>
+                {card.id === 'google' ? (
+                  <div className="btn-row">
+                    {mine.length > 0 && <button className="btn sm" onClick={sync} disabled={!!busy}><Icon name="refresh" size="sm" /> {busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>}
+                    <button className={`btn sm ${mine.length ? '' : 'primary'}`} onClick={connect} disabled={!!busy}>{busy === 'connect' ? 'Opening Google…' : mine.length ? 'Add account' : 'Connect Google'}</button>
+                  </div>
+                ) : card.id !== 'ai' && <button className="btn sm" disabled title="Coming in a later release">Connect</button>}
               </div>
             </section>
           );

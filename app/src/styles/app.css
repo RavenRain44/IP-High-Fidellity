@@ -265,3 +265,13 @@ details.card>summary{cursor:pointer}
 .mic-panel.warn strong{color:#a4262c}
 .mic-error{color:#a4262c}
 .mic-ok{display:flex;align-items:center;gap:6px;font-size:12.5px;color:#0e700e;margin:-4px 0 10px}
+
+/* Phase 3: Google */
+.error-text{color:#a4262c}
+.conn-row{flex-wrap:wrap}
+.btn-row.nowrap{flex-wrap:nowrap}
+.clamp1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media(max-width:480px){.row:has(>.btn-row.nowrap){flex-wrap:wrap}.row:has(>.btn-row.nowrap)>.grow{flex-basis:calc(100% - 50px)}.row>.btn-row.nowrap{margin-left:auto}}
+/* Long subjects and snippets must shrink inside their row, never widen the card. */
+.stack>*,.grid2>*{min-width:0}
+.row>.grow .title{overflow-wrap:anywhere}

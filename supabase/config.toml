@@ -433,3 +433,11 @@ enabled = true
 # gateway check is off; it can reject tokens signed with the newer asymmetric JWT keys.
 [functions.process-meeting]
 verify_jwt = false
+
+# Google's OAuth redirect carries no Supabase session; the function checks sessions itself for its POST actions.
+[functions.google-connect]
+verify_jwt = false
+
+# Checks the user's session itself (auth.getUser), like process-meeting.
+[functions.google-sync]
+verify_jwt = false
