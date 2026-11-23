@@ -7,6 +7,10 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/gmail.readonly',
 ];
+/** Asked for only when the user chooses to let LuMaCo add confirmed meetings to their calendar. */
+export const CALENDAR_WRITE = 'https://www.googleapis.com/auth/calendar.events';
+export const KNOWN_SCOPES = [...SCOPES, CALENDAR_WRITE];
+export const canWriteCalendar = (scopes: string[]) => scopes.includes(CALENDAR_WRITE);
 
 export class GoogleError extends Error {
   constructor(message: string, public status = 0, public code = '') { super(message); }
@@ -17,12 +21,12 @@ export const needsReconnect = (e: unknown) => e instanceof GoogleError && (e.cod
 // ---------------------------------------------------------------------------------------
 // OAuth
 // ---------------------------------------------------------------------------------------
-export function authUrl(opts: { clientId: string; redirectUri: string; state: string; loginHint?: string }): string {
+export function authUrl(opts: { clientId: string; redirectUri: string; state: string; loginHint?: string; calendarWrite?: boolean }): string {
   const p = new URLSearchParams({
     client_id: opts.clientId,
     redirect_uri: opts.redirectUri,
     response_type: 'code',
-    scope: SCOPES.join(' '),
+    scope: [...SCOPES, ...(opts.calendarWrite ? [CALENDAR_WRITE] : [])].join(' '),
     access_type: 'offline',          // ask for a refresh token
     prompt: 'consent',               // always return one, even on reconnect
     include_granted_scopes: 'true',
@@ -65,8 +69,10 @@ export function idTokenEmail(idToken: string | undefined): string | null {
   } catch { return null; }
 }
 
-export async function gapi<T>(token: string, url: string): Promise<T> {
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+export async function gapi<T>(token: string, url: string, init?: { method: string; body: unknown }): Promise<T> {
+  const res = await fetch(url, init
+    ? { method: init.method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(init.body) }
+    : { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const msg = data.error?.message || `Google request failed (${res.status})`;
@@ -207,6 +213,7 @@ export function messageText(m: GMessage, max = 2500): string {
 export type ParsedMessage = {
   id: string; threadId: string; at: string; direction: 'inbound' | 'outbound';
   from: string; fromName: string; subject: string; snippet: string; contactIds: string[];
+  contactEmails: string[];   // the addresses on this message that belong to approved contacts
 };
 
 export function parseMessage(m: GMessage, accountEmail: string, idx: ContactIndex): ParsedMessage {
@@ -221,6 +228,7 @@ export function parseMessage(m: GMessage, accountEmail: string, idx: ContactInde
     subject: header(m, 'Subject').slice(0, 300) || '(No subject)',
     snippet: decodeEntities(m.snippet ?? '').slice(0, 300),
     contactIds: matchContacts(others, idx),
+    contactEmails: others.filter(e => idx.has(e)),
   };
 }
 

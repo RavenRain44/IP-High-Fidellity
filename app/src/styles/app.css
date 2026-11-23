@@ -275,3 +275,13 @@ details.card>summary{cursor:pointer}
 /* Long subjects and snippets must shrink inside their row, never widen the card. */
 .stack>*,.grid2>*{min-width:0}
 .row>.grow .title{overflow-wrap:anywhere}
+/* Meetings found in email: inline review form */
+.suggest-form{margin-top:10px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+.suggest-form .field{margin-bottom:10px}
+.suggest-form .check-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:4px 0 12px}
+.suggest-form .check-line input{margin-top:3px}
+.permission-box{display:grid;gap:8px;padding:10px;border-radius:var(--radius);background:var(--sel)}
+.row.suggestion{align-items:flex-start}
+.link-btn{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline}
+.link-btn:disabled{opacity:.6;cursor:default}
+.suggest-form>p{margin-bottom:10px}

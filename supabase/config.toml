@@ -441,3 +441,7 @@ verify_jwt = false
 # Checks the user's session itself (auth.getUser), like process-meeting.
 [functions.google-sync]
 verify_jwt = false
+
+# Checks the user's session itself; adds confirmed meetings to Google Calendar.
+[functions.google-calendar]
+verify_jwt = false

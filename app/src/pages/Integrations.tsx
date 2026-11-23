@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { requireSupabase } from '../lib/supabase';
 import { useQuery, type Connection } from '../lib/data';
-import { connectGoogle, connectResult, disconnectGoogle, syncGoogle, type SyncResult } from '../lib/google';
+import { canAddEvents, connectGoogle, connectResult, disconnectGoogle, lastCheck, syncGoogle, type SyncResult } from '../lib/google';
 import { GoogleLogo, Icon, MicrosoftLogo } from '../components/Icon';
 
 type Card = {
@@ -33,14 +33,17 @@ function summary(r: SyncResult): string {
     r.events != null && `${r.events} calendar event${r.events === 1 ? '' : 's'}`,
     r.messages != null && `${r.messages} new email${r.messages === 1 ? '' : 's'} with contacts`,
     r.suggestions ? `${r.suggestions} promise${r.suggestions === 1 ? '' : 's'} to review` : null,
+    r.meetings ? `${r.meetings} meeting${r.meetings === 1 ? '' : 's'} to review` : null,
   ].filter(Boolean);
-  return `Synced ${r.email}: ${parts.join(', ') || 'nothing new'}.${r.warning ? ` ${r.warning}` : ''}`;
+  const check = r.check_error ? ` The promise and meeting check failed: ${r.check_error}`
+    : r.checked ? ` Checked ${r.checked} new email${r.checked === 1 ? '' : 's'} for promises and meetings.` : '';
+  return `Synced ${r.email}: ${parts.join(', ') || 'nothing new'}.${check}${r.warning ? ` ${r.warning}` : ''}`;
 }
 
 export function Integrations() {
   const sb = requireSupabase();
   const [params, setParams] = useSearchParams();
-  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error').order('connected_at'), []);
+  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error,scopes,last_check').order('connected_at'), []);
   const byProvider = (p: string) => (conns.data ?? []).filter(c => c.provider === p);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(() => connectResult(params));
   const [busy, setBusy] = useState('');
@@ -50,7 +53,7 @@ export function Integrations() {
     const r = await syncGoogle();
     setBusy('');
     if (r.error) setNotice({ ok: false, text: r.error });
-    else setNotice({ ok: !(r.results ?? []).some(x => x.error), text: (r.results ?? []).map(summary).join(' ') || 'No Google account connected.' });
+    else setNotice({ ok: !(r.results ?? []).some(x => x.error || x.check_error), text: (r.results ?? []).map(summary).join(' ') || 'No Google account connected.' });
     void conns.reload();
   }
 
@@ -65,9 +68,9 @@ export function Integrations() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function connect() {
+  async function connect(calendarWrite = false) {
     setBusy('connect');
-    const err = await connectGoogle();
+    const err = await connectGoogle({ calendarWrite });
     if (err) { setNotice({ ok: false, text: err }); setBusy(''); }
   }
 
@@ -98,9 +101,12 @@ export function Integrations() {
               {mine.map(c => (
                 <div className="row conn-row" key={c.id}>
                   <div className="grow"><div className="title">{c.account_email ?? 'Connected account'}</div>
-                    <div className={`small ${c.last_error ? 'error-text' : 'muted'}`}>{c.status === 'syncing' ? 'Syncing…' : c.last_error ? c.last_error : c.last_synced_at ? `Synced ${new Date(c.last_synced_at).toLocaleString()}` : 'Waiting for first sync'}</div></div>
+                    <div className={`small ${c.last_error ? 'error-text' : 'muted'}`}>{c.status === 'syncing' ? 'Syncing…' : c.last_error ? c.last_error : c.last_synced_at ? `Synced ${new Date(c.last_synced_at).toLocaleString()}` : 'Waiting for first sync'}</div>
+                    {(() => { const lc = lastCheck(c); return lc && <div className={`small ${lc.failed ? 'error-text' : 'muted'}`}>Email check{lc.at.getTime() ? ` (${lc.at.toLocaleString()})` : ''}: {lc.text}</div>; })()}
+                    {card.id === 'google' && <div className="small muted">Calendar: {canAddEvents(c) ? 'can add meetings you confirm' : <>read-only · <button className="link-btn" onClick={() => connect(true)} disabled={!!busy}>Allow adding events</button></>}</div>}
+                  </div>
                   {/reconnect/i.test(c.last_error ?? '')
-                    ? <button className="btn sm primary" onClick={connect} disabled={!!busy}>Reconnect</button>
+                    ? <button className="btn sm primary" onClick={() => connect()} disabled={!!busy}>Reconnect</button>
                     : <span className={`pill ${c.status === 'connected' ? 'ok' : ''}`}>{c.status === 'error' ? 'Error' : c.status === 'syncing' ? 'Syncing' : 'Connected'}</span>}
                   {card.id === 'google' && <button className="btn sm" onClick={() => disconnect(c)} disabled={!!busy} aria-label={`Disconnect ${c.account_email}`}>{busy === c.id ? 'Disconnecting…' : 'Disconnect'}</button>}
                 </div>
@@ -110,7 +116,7 @@ export function Integrations() {
                 {card.id === 'google' ? (
                   <div className="btn-row">
                     {mine.length > 0 && <button className="btn sm" onClick={sync} disabled={!!busy}><Icon name="refresh" size="sm" /> {busy === 'sync' ? 'Syncing…' : 'Sync now'}</button>}
-                    <button className={`btn sm ${mine.length ? '' : 'primary'}`} onClick={connect} disabled={!!busy}>{busy === 'connect' ? 'Opening Google…' : mine.length ? 'Add account' : 'Connect Google'}</button>
+                    <button className={`btn sm ${mine.length ? '' : 'primary'}`} onClick={() => connect()} disabled={!!busy}>{busy === 'connect' ? 'Opening Google…' : mine.length ? 'Add account' : 'Connect Google'}</button>
                   </div>
                 ) : card.id !== 'ai' && <button className="btn sm" disabled title="Coming in a later release">Connect</button>}
               </div>

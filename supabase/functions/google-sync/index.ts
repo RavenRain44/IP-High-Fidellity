@@ -9,12 +9,15 @@
 // Secrets: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, TOKEN_ENCRYPTION_KEY, ANTHROPIC_API_KEY (optional).
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
-import { decrypt, encrypt, importKey } from '../_shared/crypto.ts';
+import { importKey } from '../_shared/crypto.ts';
+import { googleAccessToken } from '../_shared/google-token.ts';
 import {
   buildContactIndex, foldThread, gapi, GoogleError, gmailQueries, mapEvent, messageText, needsReconnect, parseMessage,
-  pool, refreshAccessToken, threadLink, type ContactIndex, type GEvent, type GMessage, type ParsedMessage, type ThreadState,
+  pool, threadLink, type ContactIndex, type GEvent, type GMessage, type ParsedMessage, type ThreadState,
 } from '../_shared/google.ts';
-import { buildEmailPrompt, findEmailPromises, sanitizeEmailPromises, type EmailForReview } from '../_shared/email-promises.ts';
+import {
+  alreadyOnCalendar, analyzeEmails, buildEmailPrompt, sanitizeEmailMeetings, sanitizeEmailPromises, type EmailForReview,
+} from '../_shared/email-insights.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -27,7 +30,7 @@ const env = (...names: string[]) => names.map(n => Deno.env.get(n)).find(Boolean
 
 const DAY = 86_400_000;
 const MAX_MESSAGES = 150;       // per sync; later syncs pick up the rest
-const MAX_PROMISE_EMAILS = 25;  // newest new emails checked for commitments per sync
+const MAX_CHECK_EMAILS = 25;    // newest new emails checked for promises and meetings per sync
 
 type Conn = { id: string; account_email: string; scopes: string[]; last_synced_at: string | null };
 type Ctx = { userId: string; userName: string | null; userDb: SupabaseClient; admin: SupabaseClient; key: CryptoKey; anthropic: Anthropic | null };
@@ -72,7 +75,7 @@ async function syncConnection(ctx: Ctx, conn: Conn) {
   if (!locked?.length) return { email: conn.account_email, skipped: 'already syncing' };
 
   try {
-    const token = await accessToken(ctx, conn.id);
+    const token = await googleAccessToken(admin, ctx.key, conn.id, { id: env('GOOGLE_CLIENT_ID'), secret: env('GOOGLE_CLIENT_SECRET') });
     const { data: contacts } = await ctx.userDb.from('contacts').select('id,contact_identities(kind,value,created_at)').limit(5000);
     const idx = buildContactIndex(contacts ?? []);
     // Addresses saved since the last sync get their past 30 days of email, not just new mail.
@@ -81,9 +84,17 @@ async function syncConnection(ctx: Ctx, conn: Conn) {
       .map(i => i.value.trim().toLowerCase())));
     const has = (s: string) => conn.scopes.some(x => x.endsWith(s));
     const cal = has('/calendar.readonly') ? await syncCalendar(ctx, conn, token, idx, runStart) : null;
-    const mail = has('/gmail.readonly') ? await syncGmail(ctx, conn, token, idx, added, runStart) : null;
-    await admin.from('integration_connections').update({ status: 'connected', last_synced_at: runStart.toISOString(), last_error: null, sync_started_at: null }).eq('id', conn.id);
-    return { email: conn.account_email, events: cal?.events ?? null, messages: mail?.messages ?? null, threads: mail?.threads ?? null, suggestions: mail?.suggestions ?? null, warning: mail?.warning };
+    const mail = has('/gmail.readonly') ? await syncGmail(ctx, conn, token, idx, added, runStart, cal?.timeZone ?? 'UTC') : null;
+    await admin.from('integration_connections').update({
+      status: 'connected', last_synced_at: runStart.toISOString(), last_error: null, sync_started_at: null,
+      // Only replace the last check's result when this sync actually checked something.
+      ...(mail?.check.note ? { last_check: mail.check.note } : {}),
+    }).eq('id', conn.id);
+    return {
+      email: conn.account_email, events: cal?.events ?? null, messages: mail?.messages ?? null, threads: mail?.threads ?? null,
+      suggestions: mail?.check.promises ?? null, meetings: mail?.check.meetings ?? null, checked: mail?.check.checked ?? null,
+      check_error: mail?.check.error, warning: mail?.warning,
+    };
   } catch (e) {
     const message = needsReconnect(e) ? 'Google access expired or was removed. Reconnect this account.'
       : e instanceof GoogleError && e.code === 'api_disabled' ? e.message
@@ -92,20 +103,6 @@ async function syncConnection(ctx: Ctx, conn: Conn) {
     await admin.from('integration_connections').update({ status: 'error', last_error: message, sync_started_at: null }).eq('id', conn.id);
     return { email: conn.account_email, error: message };
   }
-}
-
-async function accessToken(ctx: Ctx, connectionId: string): Promise<string> {
-  const { data: s } = await ctx.admin.from('integration_secrets').select('access_token,refresh_token,expires_at').eq('connection_id', connectionId).single();
-  if (s?.access_token && s.expires_at && new Date(s.expires_at).getTime() > Date.now() + 60_000) return decrypt(ctx.key, s.access_token);
-  if (!s?.refresh_token) throw new GoogleError('No refresh token', 401, 'invalid_grant');
-  const t = await refreshAccessToken({ refreshToken: await decrypt(ctx.key, s.refresh_token), clientId: env('GOOGLE_CLIENT_ID'), clientSecret: env('GOOGLE_CLIENT_SECRET') });
-  await ctx.admin.from('integration_secrets').update({
-    access_token: await encrypt(ctx.key, t.access_token),
-    expires_at: new Date(Date.now() + (t.expires_in - 60) * 1000).toISOString(),
-    ...(t.refresh_token ? { refresh_token: await encrypt(ctx.key, t.refresh_token) } : {}),
-    updated_at: new Date().toISOString(),
-  }).eq('connection_id', connectionId);
-  return t.access_token;
 }
 
 /** Inserts timeline entries that aren't there yet (the unique index is partial, so no upsert). */
@@ -143,6 +140,8 @@ async function syncCalendar(ctx: Ctx, conn: Conn, token: string, idx: ContactInd
     if (!res.nextPageToken) break;
     page = res.nextPageToken;
   }
+  // The calendar's time zone turns "Tuesday at 2" in an email into the right moment.
+  const tz = await gapi<{ value?: string }>(token, 'https://www.googleapis.com/calendar/v3/users/me/settings/timezone').then(r => r.value || 'UTC', () => 'UTC');
   const rows = events.filter(e => e.status !== 'cancelled' && e.eventType !== 'workingLocation' && e.eventType !== 'outOfOffice')
     .map(e => mapEvent(e, idx)).filter((e): e is NonNullable<typeof e> => !!e)
     .map(e => ({ ...e, owner_id: ctx.userId, connection_id: conn.id, synced_at: runStart.toISOString() }));
@@ -164,13 +163,13 @@ async function syncCalendar(ctx: Ctx, conn: Conn, token: string, idx: ContactInd
   }));
   await addInteractions(ctx, 'google_calendar', timeline);
   await bumpContacts(ctx, 'last_engagement_at', latest);
-  return { events: rows.length };
+  return { events: rows.length, timeZone: tz };
 }
 
 // ---------------------------------------------------------------------------------------
-async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex, added: Set<string>, runStart: Date) {
+async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex, added: Set<string>, runStart: Date, timeZone: string) {
   const emails = [...idx.keys()];
-  if (!emails.length) return { messages: 0, threads: 0, suggestions: 0, warning: 'Add email addresses to your contacts to see their emails here.' };
+  if (!emails.length) return { messages: 0, threads: 0, check: NO_CHECK, warning: 'Add email addresses to your contacts to see their emails here.' };
   const backfill = new Date(runStart.getTime() - 30 * DAY);
   const recent = conn.last_synced_at ? new Date(new Date(conn.last_synced_at).getTime() - 2 * 3600_000) : backfill;
   const older = emails.filter(e => !added.has(e)), newer = emails.filter(e => added.has(e));
@@ -200,7 +199,7 @@ async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex,
     gapi<GMessage>(token, `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`).catch(e => { if (needsReconnect(e)) throw e; return null; }));
   const full = fetched.filter((m): m is GMessage => !!m && !(m.labelIds ?? []).some(l => l === 'SPAM' || l === 'TRASH' || l === 'DRAFT'));
   const parsed = full.map(m => parseMessage(m, conn.account_email, idx)).filter(m => m.contactIds.length);
-  if (!parsed.length) return { messages: 0, threads: 0, suggestions: 0, warning: todo.length > MAX_MESSAGES ? 'More email to catch up on next sync.' : undefined };
+  if (!parsed.length) return { messages: 0, threads: 0, check: NO_CHECK, warning: todo.length > MAX_MESSAGES ? 'More email to catch up on next sync.' : undefined };
 
   // 4. Threads: fold new messages into what we already know.
   const byThread = new Map<string, ParsedMessage[]>();
@@ -229,30 +228,61 @@ async function syncGmail(ctx: Ctx, conn: Conn, token: string, idx: ContactIndex,
   await bumpContacts(ctx, 'last_outreach_at', outreach);
   await bumpContacts(ctx, 'last_engagement_at', engagement);
 
-  // 6. Suggested promises from the newest new emails.
-  let suggestions = 0;
-  if (ctx.anthropic) {
-    const fullById = new Map(full.map(m => [m.id, m]));
-    const review: EmailForReview[] = [...parsed].sort((a, b) => b.at.localeCompare(a.at)).slice(0, MAX_PROMISE_EMAILS)
-      .map(m => ({ id: m.id, at: m.at, direction: m.direction, fromName: m.fromName, subject: m.subject, text: messageText(fullById.get(m.id)!) }))
-      .filter(e => e.text.length > 20);
-    if (review.length) {
-      try {
-        const found = sanitizeEmailPromises(await findEmailPromises(ctx.anthropic, buildEmailPrompt(review, ctx.userName)), review);
-        const byId = new Map(parsed.map(m => [m.id, m]));
-        for (const p of found) {
-          const { error } = await ctx.admin.from('promises').insert({
-            owner_id: ctx.userId, team_id: null, visibility: 'private', contact_id: byId.get(p.message_id)?.contactIds[0] ?? null,
-            title: p.title, direction: p.direction, due_on: p.due_on, status: 'suggested', source: 'gmail', source_ref: p.message_id,
-            evidence: p.evidence, owner_label: p.direction === 'made_by_me' ? 'You' : byId.get(p.message_id)?.fromName ?? 'Contact',
-          });
-          if (!error) suggestions++;
-        }
-      } catch (e) {
-        // Email still syncs if the AI step fails; it isn't retried for these messages.
-        console.error('email promise extraction failed', e instanceof Error ? e.message : e);
+  // 6. Suggested promises and meetings from the newest new emails (one AI pass).
+  const check = await checkEmails(ctx, conn, parsed, full, timeZone);
+  return { messages: parsed.length, threads: threadRows.length, check, warning: todo.length > MAX_MESSAGES ? 'More email to catch up on next sync.' : undefined };
+}
+
+// ---------------------------------------------------------------------------------------
+type Check = { checked: number; promises: number; meetings: number; error?: string; note?: string };
+const NO_CHECK: Check = { checked: 0, promises: 0, meetings: 0 };
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+/** One AI pass over the newest new emails: suggested promises and suggested meetings. */
+async function checkEmails(ctx: Ctx, conn: Conn, parsed: ParsedMessage[], full: GMessage[], timeZone: string): Promise<Check> {
+  if (!ctx.anthropic) return { ...NO_CHECK, note: 'Promise and meeting check is off: the AI key isn’t set on the server.' };
+  const fullById = new Map(full.map(m => [m.id, m]));
+  const review: EmailForReview[] = [...parsed].sort((a, b) => b.at.localeCompare(a.at)).slice(0, MAX_CHECK_EMAILS)
+    .map(m => ({ id: m.id, at: m.at, direction: m.direction, fromName: m.fromName, subject: m.subject, text: messageText(fullById.get(m.id)!) }))
+    .filter(e => e.text.length > 20);
+  if (!review.length) return NO_CHECK;
+  const when = new Date().toISOString();
+  try {
+    const found = await analyzeEmails(ctx.anthropic, buildEmailPrompt(review, ctx.userName));
+    const byId = new Map(parsed.map(m => [m.id, m]));
+
+    let promises = 0;
+    for (const p of sanitizeEmailPromises(found.promises, review)) {
+      const { error } = await ctx.admin.from('promises').insert({
+        owner_id: ctx.userId, team_id: null, visibility: 'private', contact_id: byId.get(p.message_id)?.contactIds[0] ?? null,
+        title: p.title, direction: p.direction, due_on: p.due_on, status: 'suggested', source: 'gmail', source_ref: p.message_id,
+        evidence: p.evidence, owner_label: p.direction === 'made_by_me' ? 'You' : byId.get(p.message_id)?.fromName ?? 'Contact',
+      });
+      if (!error) promises++;
+    }
+
+    let meetings = 0;
+    const drafts = sanitizeEmailMeetings(found.meetings, review, timeZone);
+    if (drafts.length) {
+      const { data: events } = await ctx.admin.from('calendar_events').select('starts_at,contact_ids').eq('owner_id', ctx.userId)
+        .gte('starts_at', new Date(Date.now() - 86400_000).toISOString());
+      for (const d of drafts) {
+        const msg = byId.get(d.source_ref);
+        const row = { ...d, contact_ids: msg?.contactIds ?? [], attendee_emails: msg?.contactEmails ?? [] };
+        if (alreadyOnCalendar(row, events ?? [])) continue;   // e.g. they already sent an invite
+        const { error } = await ctx.admin.from('meeting_suggestions').insert({
+          ...row, owner_id: ctx.userId, connection_id: conn.id, source: 'gmail',
+          thread_link: msg ? threadLink(conn.account_email, msg.threadId) : null,
+        });
+        if (!error) meetings++;
       }
     }
+    return { checked: review.length, promises, meetings,
+      note: `${when}|Checked ${plural(review.length, 'new email')}: ${plural(promises, 'promise')}, ${plural(meetings, 'meeting')} found.` };
+  } catch (e) {
+    // Email still syncs if the AI step fails; these messages aren't checked again.
+    const msg = e instanceof Error ? e.message : 'unknown error';
+    console.error('email check failed', msg);
+    return { ...NO_CHECK, error: msg, note: `${when}|Promise and meeting check failed: ${msg.slice(0, 200)}` };
   }
-  return { messages: parsed.length, threads: threadRows.length, suggestions, warning: todo.length > MAX_MESSAGES ? 'More email to catch up on next sync.' : undefined };
 }

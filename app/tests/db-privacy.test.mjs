@@ -170,7 +170,15 @@ const sugg = (await asService(`insert into public.promises (owner_id, title, sta
 ok(await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'gmail', 'm1')`, [users.alice.id]).then(() => false, () => true), 'the same email promise is never suggested twice');
 await as(users.alice, `update public.promises set status = 'open' where id = $1`, [sugg]);
 ok((await as(users.alice, `select status from public.promises where id=$1`, [sugg])).rows[0].status === 'open', 'you can keep a suggested promise');
+const ms = (await asService(`insert into public.meeting_suggestions (owner_id, connection_id, source_ref, title, starts_at, contact_ids) values ($1, $2, 'm9', 'Site walk with Sarah', now() + interval '2 days', '{}') returning id`, [users.alice.id, conn])).rows[0].id;
+ok((await as(users.alice, `select count(*)::int n from public.meeting_suggestions`)).rows[0].n === 1, 'you see meetings suggested from your email');
+ok((await as(users.carol, `select count(*)::int n from public.meeting_suggestions`)).rows[0].n === 0, 'your manager cannot see meetings suggested from your email');
+ok(await fails(users.alice, `update public.meeting_suggestions set starts_at = now() where id = $1`, [ms]), 'suggested meeting details can only change through the server');
+await as(users.alice, `update public.meeting_suggestions set status = 'dismissed' where id = $1`, [ms]);
+ok((await as(users.alice, `select status from public.meeting_suggestions where id=$1`, [ms])).rows[0].status === 'dismissed', 'you can dismiss a suggested meeting');
+ok(await fails(users.alice, `update public.meeting_suggestions set status = 'bogus' where id = $1`, [ms]), 'only valid statuses are accepted');
 await as(users.alice, `delete from public.integration_connections where id = $1`, [conn]);
+ok((await asService(`select count(*)::int n from public.meeting_suggestions`)).rows[0].n === 0, 'disconnecting deletes meeting suggestions too');
 ok((await asService(`select (select count(*) from public.calendar_events)::int + (select count(*) from public.email_threads)::int + (select count(*) from public.integration_secrets)::int n`)).rows[0].n === 0, 'disconnecting deletes the tokens, events and email threads');
 
 // Signed-out visitors (anon) get nothing.
@@ -179,7 +187,7 @@ async function asAnon(sql) {
   try { return await db.query(sql); } finally { await db.exec('reset role'); }
 }
 let anonBlocked = true;
-for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_secrets', 'calendar_events', 'email_threads', 'oauth_states']) {
+for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_secrets', 'calendar_events', 'email_threads', 'oauth_states', 'meeting_suggestions']) {
   try { await asAnon(`select * from public.${t}`); anonBlocked = false; } catch {}
 }
 ok(anonBlocked, 'signed-out visitors cannot read any table');

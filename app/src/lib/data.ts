@@ -4,7 +4,7 @@ import { friendlyError } from './supabase';
 export type TeamRole = 'owner' | 'manager' | 'member';
 export type Membership = { team_id: string; role: TeamRole; teams: { id: string; name: string } | null };
 export type Invite = { id: string; team_id: string; team_name: string; role: TeamRole; invited_by_name: string | null; created_at: string };
-export type Connection = { id: string; provider: 'google' | 'microsoft' | 'twilio'; status: string; account_email: string | null; last_synced_at: string | null; last_error: string | null };
+export type Connection = { id: string; provider: 'google' | 'microsoft' | 'twilio'; status: string; account_email: string | null; last_synced_at: string | null; last_error: string | null; scopes?: string[]; last_check?: string | null };
 export type Promise_ = { id: string; title: string; due_on: string | null; status: string; direction: string; contact_id: string | null };
 
 /** Small query hook: runs `fn`, exposes data/error/loading and a reload. */

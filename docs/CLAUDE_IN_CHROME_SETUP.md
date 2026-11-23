@@ -486,6 +486,33 @@ Tick both Gmail and Calendar on Google's screen.
 
 ---
 
+## Part 8 — Let LuMaCo add meetings to Google Calendar (optional)
+
+LuMaCo suggests meetings it finds in email; when you confirm one, it can put it on your Google
+Calendar. That needs one more permission. LuMaCo asks only for **calendar.events** ("view and edit events on all your
+calendars"), not full control of your calendars. Google
+asks you for it the first time you click "Allow adding events"; this step registers it on the consent
+screen so the request is listed properly. Without it, "Open in Google Calendar" still works.
+
+````text
+Help me add one Google Calendar permission to my app LuMaCo's consent screen. Use the same Google Cloud project as LuMaCo's "Sign in with Google". Work in a new tab and stop if anything needs me to sign in.
+
+1. Open https://console.cloud.google.com/auth/scopes (select the LuMaCo project first).
+2. Click "Add or remove scopes". In "Manually add scopes", paste this line and click "Add to table":
+   https://www.googleapis.com/auth/calendar.events
+3. Make sure it is ticked, click Update, then Save. Do not submit the app for verification.
+4. Print exactly this block, filled in:
+
+REPORT BACK — CALENDAR WRITE
+calendar.events scope added: yes/no
+Anything that didn't match these instructions: <notes>
+````
+
+Then on the dashboard, open a suggested meeting, click **Add to my calendar**, and choose **Allow adding
+events** when asked. Google shows its permission screen once.
+
+---
+
 ## Then, back in Claude Code
 
 Paste all the report blocks plus your **anon / publishable key**, and say "finish the setup". Claude Code will:

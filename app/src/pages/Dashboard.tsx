@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { friendlyError, requireSupabase } from '../lib/supabase';
 import { dateTime, dueLabel, useQuery, type Connection } from '../lib/data';
-import { useAutoSync } from '../lib/google';
+import { canAddEvents, connectResult, useAutoSync, type MeetingSuggestion } from '../lib/google';
+import { MeetingSuggestionRow } from '../components/MeetingSuggestionRow';
 import { Icon } from '../components/Icon';
 
 type Counts = { connections: number; contacts: number; meetings: number; teams: number };
@@ -56,7 +57,7 @@ export function Dashboard() {
   const pending = useQuery<Pending[]>(() => sb.from('meetings').select('id,title,kind,status,started_at,error').eq('owner_id', uid)
     .in('status', ['ready', 'failed']).order('started_at', { ascending: false }).limit(10), [uid]);
 
-  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error'), []);
+  const conns = useQuery<Connection[]>(() => sb.from('integration_connections').select('id,provider,status,account_email,last_synced_at,last_error,scopes,last_check'), []);
   const threads = useQuery<Thread[]>(() => sb.from('email_threads').select('id,subject,snippet,last_from,last_message_at,web_link')
     .eq('needs_reply', true).is('dismissed_at', null).order('last_message_at', { ascending: false }).limit(wide ? 15 : 8), [wide]);
   const suggested = useQuery<Suggested[]>(() => sb.from('promises').select('id,title,due_on,direction,evidence,contacts(id,full_name)').eq('owner_id', uid).eq('status', 'suggested')
@@ -64,11 +65,21 @@ export function Dashboard() {
   const events = useQuery<CalEvent[]>(() => sb.from('calendar_events').select('id,title,starts_at,ends_at,all_day,location,meeting_url,html_link,contact_ids')
     .gte('starts_at', new Date(Date.now() - 60 * 60_000).toISOString()).lt('starts_at', new Date(Date.now() + 7 * 86400000).toISOString())
     .or('my_response.is.null,my_response.neq.declined').order('starts_at').limit(wide ? 14 : 6), [wide]);
-  const eventContactIds = [...new Set((events.data ?? []).flatMap(e => e.contact_ids))];
+  const meetingSugg = useQuery<MeetingSuggestion[]>(() => sb.from('meeting_suggestions')
+    .select('id,title,starts_at,ends_at,time_known,location,attendee_emails,contact_ids,evidence,thread_link,connection_id')
+    .eq('status', 'suggested').gte('starts_at', new Date(Date.now() - 86400000).toISOString()).order('starts_at').limit(10), []);
+  const eventContactIds = [...new Set([...(events.data ?? []), ...(meetingSugg.data ?? [])].flatMap(e => e.contact_ids))];
   const names = useQuery<{ id: string; full_name: string }[]>(() => sb.from('contacts').select('id,full_name').in('id', eventContactIds.length ? eventContactIds : ['00000000-0000-0000-0000-000000000000']), [eventContactIds.join()]);
   const nameOf = (id: string) => names.data?.find(n => n.id === id)?.full_name;
   const google = (conns.data ?? []).filter(c => c.provider === 'google');
-  useAutoSync(conns.data, () => { void threads.reload(); void suggested.reload(); void events.reload(); void promises.reload(); void conns.reload(); });
+  useAutoSync(conns.data, () => { void threads.reload(); void suggested.reload(); void events.reload(); void promises.reload(); void meetingSugg.reload(); void conns.reload(); });
+
+  // Back from Google (e.g. after allowing LuMaCo to add events): show the result once.
+  const [params, setParams] = useSearchParams();
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(() => connectResult(params));
+  const cleared = useRef(false);
+  useEffect(() => { if (!cleared.current && params.get('google')) { cleared.current = true; setParams({}, { replace: true }); } }, [params, setParams]);
+  const meetingDone = (text: string) => { setNotice({ ok: true, text }); void meetingSugg.reload(); void events.reload(); };
 
   async function dismissThread(id: string) {
     const { error } = await sb.from('email_threads').update({ dismissed_at: new Date().toISOString() }).eq('id', id);
@@ -99,7 +110,8 @@ export function Dashboard() {
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const urgent = open.filter(p => p.due_on && new Date(p.due_on + 'T00:00:00').getTime() - today.getTime() <= 86400000);
   const review = pending.data ?? [];
-  const loadErr = error || counts.error || promises.error || pending.error || threads.error || suggested.error || events.error;
+  const loadErr = error || counts.error || promises.error || pending.error || threads.error || suggested.error || events.error || meetingSugg.error;
+  const plannedMeetings = meetingSugg.data ?? [];
   const replies = threads.data ?? [];
   const toReview = suggested.data ?? [];
 
@@ -109,6 +121,7 @@ export function Dashboard() {
         <div><h1>{greet}{first ? `, ${first}` : ''}.</h1><p>{new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</p></div>
       </div>
       {loadErr && <div className="alert error" role="alert">{loadErr}</div>}
+      {notice && <div className={`alert ${notice.ok ? 'ok' : 'error'}`} role="status">{notice.text}</div>}
 
       <div className="grid2 dash">
         <div className="stack dash-left">
@@ -128,6 +141,10 @@ export function Dashboard() {
                 <div className="grow"><div className="title">{p.title}</div><div className="small muted">Open Promise{p.contacts ? ` · ${p.contacts.full_name}` : ''}</div></div>
                 <span className={`pill ${dueLabel(p.due_on).includes('overdue') ? '' : 'gold'}`}>{dueLabel(p.due_on)}</span>
               </div>
+            ))}
+            {plannedMeetings.map(m => (
+              <MeetingSuggestionRow key={m.id} m={m} names={m.contact_ids.map(nameOf).filter(Boolean) as string[]}
+                canWrite={canAddEvents(google.find(c => c.id === m.connection_id))} onDone={meetingDone} />
             ))}
             {replies.map(t => (
               <div className="row" key={t.id}>
@@ -152,7 +169,7 @@ export function Dashboard() {
                 </div>
               </div>
             ))}
-            {!review.length && !urgent.length && !replies.length && !toReview.length && !promises.loading && (
+            {!review.length && !urgent.length && !replies.length && !toReview.length && !plannedMeetings.length && !promises.loading && (
               <div className="empty"><strong>Nothing urgent</strong>Drafts to review, promises due soon and, once connected, unanswered customer emails appear here.</div>
             )}
           </section>
