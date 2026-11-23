@@ -95,6 +95,20 @@ await as(users.alice, `insert into public.contact_identities (contact_id, kind, 
 ok((await as(users.bob, `select count(*)::int n from public.contact_identities`)).rows[0].n === 1, 'identities follow their contact\'s visibility');
 ok(await fails(users.bob, `insert into public.contact_identities (contact_id, kind, value) values ($1, 'email', 'evil@x.test')`, [contactId]), 'only the contact\'s author can add identities');
 
+// Background sync reads each user's contacts with nobody signed in: same rules as a signed-in read.
+async function asServer(sql, params = []) {
+  await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false), set_config('request.jwt.claims', '', false)");
+  await db.exec('set role service_role');
+  try { return await db.query(sql, params); } finally { await db.exec('reset role'); }
+}
+const syncSees = async u => (await asServer(`select s.contact_id, s.identities, c.full_name from public.sync_contacts_for($1) s join public.contacts c on c.id = s.contact_id order by c.full_name`, [u.id])).rows;
+ok((await syncSees(users.alice)).length === 4, 'background sync reads all of alice\'s contacts for alice');
+const bobSync = await syncSees(users.bob);
+ok(bobSync.length === 1 && bobSync[0].full_name === 'Team shared' && bobSync[0].identities.length === 1 && bobSync[0].identities[0].value === 'cust@client.test',
+   'background sync for bob sees only team-visible contacts, with their addresses');
+ok(JSON.stringify((await syncSees(users.carol)).map(r => r.full_name)) === JSON.stringify(['Team managers', 'Team shared']), 'background sync for a manager follows manager visibility');
+ok((await syncSees(users.dave)).length === 0, 'background sync for an outsider sees nothing');
+ok(await fails(users.bob, `select * from public.sync_contacts_for($1)`, [users.alice.id]), 'users cannot call the background-sync contact reader');
 ok(await fails(users.bob, `select * from public.integration_secrets`), 'browser roles cannot read OAuth tokens');
 ok(await fails(users.bob, `insert into public.integration_connections (provider) values ('google')`), 'connections are written by the server only');
 
@@ -200,6 +214,7 @@ for (const t of ['profiles', 'teams', 'contacts', 'team_invites', 'integration_s
 }
 ok(anonBlocked, 'signed-out visitors cannot read any table');
 let rpcBlocked = true; try { await asAnon('select * from public.my_invites()'); rpcBlocked = false; } catch {}
+try { await asAnon(`select * from public.sync_contacts_for('00000000-0000-0000-0000-00000000000a')`); rpcBlocked = false; } catch {}
 ok(rpcBlocked, 'signed-out visitors cannot call account functions');
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll privacy checks passed');

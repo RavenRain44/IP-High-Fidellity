@@ -1,6 +1,11 @@
 // Syncs every email/calendar account the signed-in user connected (Google and Microsoft).
 //
-// POST { time_zone? } with the user's session token. For each account:
+// POST { time_zone? } with the user's session token: syncs that user's accounts.
+// POST { scheduled: true } with header x-sync-secret = SYNC_CRON_SECRET: the database's timer
+//   (pg_cron, every 10 minutes) asking to sync every account not synced in the last ~30 minutes,
+//   for all users, as many as fit in one run. Each user's contacts are read with their own
+//   sharing rules (sync_contacts_for), exactly as when they're signed in.
+// For each account:
 //   * Calendar: events from 30 days ago to 45 days ahead, matched to approved contacts by email.
 //     Past meetings with contacts go on their timelines.
 //   * Mail: only messages to/from approved contacts' saved addresses (the provider's search does the
@@ -48,11 +53,18 @@ const MAX_MESSAGES = 150;       // per sync; later syncs pick up the rest
 const MAX_CHECK_EMAILS = 25;    // newest new emails checked for promises and meetings per sync
 
 type Conn = { id: string; provider: ProviderId; account_email: string; scopes: string[]; last_synced_at: string | null; time_zone: string | null };
-type Ctx = { userId: string; userName: string | null; userDb: SupabaseClient; admin: SupabaseClient; key: CryptoKey; anthropic: Anthropic | null; browserZone: string | null };
+// userDb is the signed-in user's own client; null for scheduled runs, which use server-only paths
+// that apply the same rules (sync_contacts_for, and owner-only contact updates).
+type Ctx = { userId: string; userName: string | null; userDb: SupabaseClient | null; admin: SupabaseClient; key: CryptoKey; anthropic: Anthropic | null; browserZone: string | null };
 
 export async function syncHandler(req: Request): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405);
+  const cronSecret = req.headers.get('x-sync-secret');
+  if (cronSecret !== null) {
+    if (!env('SYNC_CRON_SECRET') || !sameSecret(cronSecret, env('SYNC_CRON_SECRET'))) return json({ error: 'Forbidden' }, 403);
+    return scheduledSync();
+  }
   const authHeader = req.headers.get('Authorization');
   if (!authHeader) return json({ error: 'Sign in required' }, 401);
 
@@ -84,6 +96,52 @@ export async function syncHandler(req: Request): Promise<Response> {
   return json({ results });
 }
 
+/** Constant-time string comparison for the scheduler's secret. */
+function sameSecret(a: string, b: string): boolean {
+  const x = new TextEncoder().encode(a), y = new TextEncoder().encode(b);
+  let diff = x.length ^ y.length;
+  for (let i = 0; i < Math.max(x.length, y.length); i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+const SCHEDULE_EVERY_MS = 28 * 60_000;   // with the 10-minute timer: each account about every 30 minutes
+const SCHEDULE_BUDGET_MS = 100_000;      // stop starting new accounts after this; the next run continues
+
+/** One scheduled run: the accounts most overdue first, until the time budget is used. */
+async function scheduledSync(): Promise<Response> {
+  if (!env('TOKEN_ENCRYPTION_KEY')) return json({ error: 'Account sync isn’t set up on the server yet.' }, 503);
+  const started = Date.now();
+  const admin = createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_SECRET_KEY'), { auth: { persistSession: false } });
+  const cutoff = new Date(started - SCHEDULE_EVERY_MS).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const { data: due, error } = await admin.from('integration_connections')
+    .select('id,user_id,provider,account_email,scopes,last_synced_at,time_zone,last_error')
+    .in('provider', ['google', 'microsoft']).neq('status', 'revoked')
+    .or(`last_synced_at.is.null,last_synced_at.lt.${cutoff}`)
+    .order('last_synced_at', { ascending: true, nullsFirst: true }).limit(100);
+  if (error) return json({ error: 'Could not list accounts.' }, 500);
+  // Accounts that need the user to reconnect would only fail again.
+  const todo = (due ?? []).filter(c => !/reconnect/i.test(c.last_error ?? ''));
+
+  const key = await importKey(env('TOKEN_ENCRYPTION_KEY'));
+  const anthropic = env('ANTHROPIC_API_KEY') ? new Anthropic({ apiKey: env('ANTHROPIC_API_KEY') }) : null;
+  const ctxs = new Map<string, Ctx>();
+  let synced = 0, failed = 0, skipped = 0;
+  for (const c of todo) {
+    if (Date.now() - started > SCHEDULE_BUDGET_MS) break;
+    const adapter = adapterFor(c.provider);
+    if (!adapter) { skipped++; continue; }
+    let ctx = ctxs.get(c.user_id);
+    if (!ctx) {
+      const { data: profile } = await admin.from('profiles').select('full_name').eq('id', c.user_id).maybeSingle();
+      ctx = { userId: c.user_id, userName: profile?.full_name ?? null, userDb: null, admin, key, anthropic, browserZone: null };
+      ctxs.set(c.user_id, ctx);
+    }
+    const r = await syncConnection(ctx, c as Conn, adapter);
+    if ('skipped' in r) skipped++; else if ('error' in r && r.error) failed++; else synced++;
+  }
+  return json({ due: todo.length, synced, failed, skipped, left: todo.length - synced - failed - skipped });
+}
+
 async function syncConnection(ctx: Ctx, conn: Conn, a: Adapter) {
   const { admin } = ctx;
   const runStart = new Date();
@@ -98,7 +156,7 @@ async function syncConnection(ctx: Ctx, conn: Conn, a: Adapter) {
 
   try {
     const token = await accessToken(admin, ctx.key, conn.id, a.refresh, () => new ProviderError('No refresh token', 401, 'invalid_grant'));
-    const { data: contacts } = await ctx.userDb.from('contacts').select('id,contact_identities(kind,value,created_at)').limit(5000);
+    const contacts = await readContacts(ctx);
     const idx = buildContactIndex(contacts ?? []);
     // Addresses saved since the last sync get their past 30 days of email, not just new mail.
     const added = new Set((contacts ?? []).flatMap(c => (c.contact_identities ?? [])
@@ -145,11 +203,26 @@ async function addInteractions(ctx: Ctx, source: string, rows: Record<string, un
   return fresh.length;
 }
 
-/** Moves a contact's last outreach / engagement forward. Uses the user's own permissions. */
+type ContactRow = { id: string; contact_identities: { kind: string; value: string; created_at: string }[] };
+/** The contacts the user can see (theirs and ones shared with them), with their addresses. */
+async function readContacts(ctx: Ctx): Promise<ContactRow[]> {
+  if (ctx.userDb) {
+    const { data, error } = await ctx.userDb.from('contacts').select('id,contact_identities(kind,value,created_at)').limit(5000);
+    if (error) throw new Error(`contacts: ${error.message}`);
+    return (data ?? []) as ContactRow[];
+  }
+  const { data, error } = await ctx.admin.rpc('sync_contacts_for', { p_user: ctx.userId });
+  if (error) throw new Error(`contacts: ${error.message}`);
+  return ((data ?? []) as { contact_id: string; identities: ContactRow['contact_identities'] }[])
+    .map(r => ({ id: r.contact_id, contact_identities: r.identities ?? [] }));
+}
+
+/** Moves a contact's last outreach / engagement forward. Only contacts the user owns, as with their own permissions. */
 async function bumpContacts(ctx: Ctx, field: 'last_outreach_at' | 'last_engagement_at', latest: Map<string, string>) {
   for (const [id, at] of latest) {
     const iso = new Date(at).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    await ctx.userDb.from('contacts').update({ [field]: iso }).eq('id', id).or(`${field}.is.null,${field}.lt.${iso}`);
+    const q = ctx.userDb ? ctx.userDb.from('contacts').update({ [field]: iso }) : ctx.admin.from('contacts').update({ [field]: iso }).eq('owner_id', ctx.userId);
+    await q.eq('id', id).or(`${field}.is.null,${field}.lt.${iso}`);
   }
 }
 
