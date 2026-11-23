@@ -112,7 +112,7 @@ function ProjectFile({ project, contacts, onEdit, onBack, onDeleted }: { project
   const meetings = useQuery<{ id: string; title: string | null; started_at: string; notes: string | null; kind: string }[]>(() =>
     sb.from('meetings').select('id,title,started_at,notes,kind').eq('project_id', project.id).eq('status', 'reviewed').order('started_at', { ascending: false }), [project.id]);
   const activity = useQuery<{ id: string; kind: string; occurred_at: string; title: string | null; summary: string | null; source: string }[]>(() =>
-    sb.from('interactions').select('id,kind,occurred_at,title,summary,source').eq('project_id', project.id).neq('source', 'recording').order('occurred_at', { ascending: false }).limit(50), [project.id]);
+    sb.from('interactions').select('id,kind,occurred_at,title,summary,source').eq('project_id', project.id).is('undone_at', null).neq('source', 'recording').order('occurred_at', { ascending: false }).limit(50), [project.id]);
   const promises = useQuery<{ id: string; title: string; due_on: string | null; contact_id: string | null }[]>(() =>
     sb.from('promises').select('id,title,due_on,contact_id').eq('project_id', project.id).eq('status', 'open').order('due_on'), [project.id]);
   const [error, setError] = useState('');

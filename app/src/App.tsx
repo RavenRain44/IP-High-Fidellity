@@ -11,6 +11,7 @@ import { Projects } from './pages/Projects';
 import { Capture } from './pages/Capture';
 import { Meetings } from './pages/Meetings';
 import { Meeting } from './pages/Meeting';
+import { TeamDashboard } from './pages/TeamDashboard';
 
 export function App() {
   return (
@@ -30,6 +31,7 @@ export function App() {
         <Route path="contacts" element={<Contacts />} />
         <Route path="projects" element={<Projects />} />
         <Route path="integrations" element={<Integrations />} />
+        <Route path="team" element={<TeamDashboard />} />
         <Route path="teams" element={<Teams />} />
         <Route path="account" element={<Account />} />
       </Route>

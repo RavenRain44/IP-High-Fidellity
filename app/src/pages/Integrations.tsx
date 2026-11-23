@@ -4,6 +4,9 @@ import { requireSupabase } from '../lib/supabase';
 import { useQuery, type Connection } from '../lib/data';
 import { canAddEvents, connectAccount, connectResult, disconnectAccount, isMailProvider, lastCheck, PROVIDER_NAME, syncAccounts, type MailProvider, type SyncResult } from '../lib/accounts';
 import { GoogleLogo, Icon, MicrosoftLogo } from '../components/Icon';
+import { AuditList } from '../components/AuditList';
+import { AUDIT_SELECT, type AuditEvent } from '../lib/audit';
+import { useAuth } from '../lib/auth';
 
 type Card = {
   id: Connection['provider'] | 'ai';
@@ -48,6 +51,7 @@ export function Integrations() {
   const byProvider = (p: string) => (conns.data ?? []).filter(c => c.provider === p);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(() => connectResult(params));
   const [busy, setBusy] = useState('');
+  const [updatesKey, setUpdatesKey] = useState(0);
 
   async function sync() {
     setBusy('sync');
@@ -56,6 +60,7 @@ export function Integrations() {
     if (r.error) setNotice({ ok: false, text: r.error });
     else setNotice({ ok: !(r.results ?? []).some(x => x.error || x.check_error), text: (r.results ?? []).map(summary).join(' ') || 'No email account connected.' });
     void conns.reload();
+    setUpdatesKey(k => k + 1);
   }
 
   // Back from Google's or Microsoft's consent screen: show the result once, then run the first sync.
@@ -127,6 +132,30 @@ export function Integrations() {
           );
         })}
       </div>
+      {(conns.data ?? []).some(c => isMailProvider(c.provider)) && <AutomaticUpdates key={updatesKey} />}
     </>
+  );
+}
+
+/** Your recent automatic changes from email and calendar sync, each with Undo. */
+function AutomaticUpdates() {
+  const sb = requireSupabase();
+  const { user } = useAuth();
+  const [limit, setLimit] = useState(15);
+  const events = useQuery<AuditEvent[]>(() => sb.from('audit_events').select(AUDIT_SELECT).eq('owner_id', user!.id).eq('action', 'interaction_added')
+    .order('created_at', { ascending: false }).limit(limit).overrideTypes<AuditEvent[], { merge: false }>(), [user?.id, limit]);
+  const ids = (events.data ?? []).map(e => e.entity_id).filter((x): x is string => !!x);
+  const titles = useQuery<{ id: string; title: string | null }[]>(() => ids.length ? sb.from('interactions').select('id,title').in('id', ids) : Promise.resolve({ data: [], error: null }), [ids.join(',')]);
+  const titleMap = new Map((titles.data ?? []).map(t => [t.id, t.title]));
+  return (
+    <section className="card" style={{ marginTop: 12 }} aria-labelledby="auto-updates">
+      <div className="card-head"><h2 id="auto-updates"><Icon name="refresh" /> Automatic updates</h2></div>
+      <p className="small muted" style={{ marginBottom: 8 }}>What sync added to your contacts’ timelines and dates. Undo removes an entry and puts the contact’s dates back; later syncs won’t add it again.</p>
+      {events.error && <div className="alert error" role="alert">{events.error}</div>}
+      {events.loading && !events.data ? <p className="muted small">Loading…</p> : (
+        <AuditList events={events.data ?? []} titles={titleMap} canUndo onUndone={() => void events.reload()} empty="Nothing yet. Email and meetings with your contacts will show up here after a sync." />
+      )}
+      {(events.data?.length ?? 0) >= limit && <button className="btn sm" style={{ marginTop: 8 }} onClick={() => setLimit(l => l + 30)}>Show more</button>}
+    </section>
   );
 }

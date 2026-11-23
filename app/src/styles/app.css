@@ -285,3 +285,13 @@ details.card>summary{cursor:pointer}
 .link-btn{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;text-decoration:underline}
 .link-btn:disabled{opacity:.6;cursor:default}
 .suggest-form>p{margin-bottom:10px}
+
+/* Team Dashboard */
+.stat-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.stat-row>.card{margin:0}
+.card.stat{display:flex;flex-direction:column;gap:2px;padding:14px 16px}
+.card.stat b{font-size:26px;line-height:1.1;color:var(--navy)}
+.card.stat span{font-size:13px;color:var(--muted)}
+.table tr.selected td{background:var(--sel)}
+@media (max-width:720px){.stat-row{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.table-scroll{overflow-x:auto}

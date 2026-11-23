@@ -6,6 +6,7 @@ import { companyName, dateTime, daysAgo, dueLabel, useQuery, useWorkspaces, type
 import { WorkspaceFields } from '../components/Fields';
 import { Icon } from '../components/Icon';
 import { initials } from '../components/AppShell';
+import { undoChange } from '../lib/audit';
 
 const CONTACT_SELECT = 'id,owner_id,team_id,visibility,full_name,title,company_id,priority,starred,notes,last_engagement_at,last_outreach_at,companies(id,name),contact_identities(id,kind,value)';
 
@@ -44,7 +45,7 @@ export function Contacts() {
         <section className="detail-pane">
           {selectedId === 'new' ? <ContactForm onDone={id => { void contacts.reload(); open(id); }} onCancel={() => open(null)} />
             : selected && editing ? <ContactForm contact={selected} onDone={id => { void contacts.reload(); open(id); }} onCancel={() => open(selected.id)} />
-            : selected ? <ContactDetail contact={selected} onEdit={() => open(selected.id, true)} onDeleted={() => { void contacts.reload(); open(null); }} onBack={() => open(null)} />
+            : selected ? <ContactDetail contact={selected} onEdit={() => open(selected.id, true)} onDeleted={() => { void contacts.reload(); open(null); }} onBack={() => open(null)} onChanged={() => void contacts.reload()} />
             : <div className="card empty"><strong>Select a contact</strong>Or add a new one to start tracking a relationship.</div>}
         </section>
       </div>
@@ -139,10 +140,16 @@ type TimelineRow = { id: string; kind: string; occurred_at: string; title: strin
 type PromiseRow = { id: string; title: string; due_on: string | null; direction: string; status: string };
 type MeetingLink = { meetings: { id: string; title: string | null; started_at: string; kind: string; status: string } | null };
 
-function ContactDetail({ contact, onEdit, onDeleted, onBack }: { contact: Contact; onEdit: () => void; onDeleted: () => void; onBack: () => void }) {
+function ContactDetail({ contact, onEdit, onDeleted, onBack, onChanged }: { contact: Contact; onEdit: () => void; onDeleted: () => void; onBack: () => void; onChanged: () => void }) {
   const sb = requireSupabase();
   const { user } = useAuth();
-  const timeline = useQuery<TimelineRow[]>(() => sb.from('interactions').select('id,kind,occurred_at,title,summary,source').eq('contact_id', contact.id).order('occurred_at', { ascending: false }).limit(30), [contact.id]);
+  const timeline = useQuery<TimelineRow[]>(() => sb.from('interactions').select('id,kind,occurred_at,title,summary,source').eq('contact_id', contact.id).is('undone_at', null).order('occurred_at', { ascending: false }).limit(30), [contact.id]);
+  // Your automatic (synced) entries can be undone from here.
+  const tIds = (timeline.data ?? []).map(t => t.id);
+  const undoable = useQuery<{ id: string; entity_id: string }[]>(() => tIds.length && user
+    ? sb.from('audit_events').select('id,entity_id').eq('owner_id', user.id).eq('action', 'interaction_added').is('undone_at', null).in('entity_id', tIds)
+    : Promise.resolve({ data: [], error: null }), [tIds.join(','), user?.id]);
+  const undoFor = new Map((undoable.data ?? []).map(u => [u.entity_id, u.id]));
   const promises = useQuery<PromiseRow[]>(() => sb.from('promises').select('id,title,due_on,direction,status').eq('contact_id', contact.id).eq('status', 'open').order('due_on'), [contact.id]);
   const meetings = useQuery<MeetingLink[]>(() => sb.from('meeting_contacts').select('meetings(id,title,started_at,kind,status)').eq('contact_id', contact.id).overrideTypes<MeetingLink[], { merge: false }>(), [contact.id]);
   const [error, setError] = useState('');
@@ -155,6 +162,11 @@ function ContactDetail({ contact, onEdit, onDeleted, onBack }: { contact: Contac
     if (!confirm(`Delete ${contact.full_name}? Their timeline entries and promises are deleted too. This can’t be undone.`)) return;
     const { error } = await sb.from('contacts').delete().eq('id', contact.id);
     if (error) setError(friendlyError(error)); else onDeleted();
+  }
+  async function undo(eventId: string) {
+    if (!confirm('Remove this entry from the timeline? The contact’s last outreach and engagement go back to what they were without it, and later syncs won’t add it again.')) return;
+    const err = await undoChange(eventId);
+    if (err) setError(err); else { void timeline.reload(); onChanged(); }
   }
   async function complete(id: string) {
     const { error } = await sb.from('promises').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', id);
@@ -199,6 +211,7 @@ function ContactDetail({ contact, onEdit, onDeleted, onBack }: { contact: Contac
             <span className="row-icon"><Icon name={t.kind === 'meeting' ? 'mic' : t.kind === 'email' ? 'mail' : t.kind === 'call' ? 'phone' : 'file'} size="sm" /></span>
             <div className="grow"><div className="title">{t.title || t.kind}</div>{t.summary && <div className="small muted">{t.summary}</div>}</div>
             <span className="small muted">{dateTime(t.occurred_at)}</span>
+            {undoFor.has(t.id) && <button className="btn sm" onClick={() => undo(undoFor.get(t.id)!)} title="Undo this automatic update" aria-label={`Remove “${t.title || t.kind}” from the timeline`}>Undo</button>}
           </div>
         )) : <p className="muted small">Nothing yet. Meetings, notes, emails and calls with {contact.full_name.split(' ')[0]} will appear here.</p>}
         {!!meetings.data?.length && (

@@ -189,7 +189,13 @@ async function syncConnection(ctx: Ctx, conn: Conn, a: Adapter) {
   }
 }
 
-/** Inserts timeline entries that aren't there yet (the unique index is partial, so no upsert). */
+type Added = { id: string; contact_id: string; kind: string; direction: string | null; occurred_at: string; qualifies_outreach: boolean; qualifies_engagement: boolean };
+
+/**
+ * Inserts timeline entries that aren't there yet (the unique index is partial, so no upsert), moves the
+ * contacts' last outreach / engagement forward from the new entries, and logs each one in the audit
+ * trail so the user can undo it. Entries the user undid stay in the table (hidden), so they're never re-added.
+ */
 async function addInteractions(ctx: Ctx, source: string, rows: Record<string, unknown>[]) {
   if (!rows.length) return 0;
   const refs = rows.map(r => r.source_ref as string);
@@ -198,9 +204,63 @@ async function addInteractions(ctx: Ctx, source: string, rows: Record<string, un
     const { data } = await ctx.admin.from('interactions').select('source_ref').eq('owner_id', ctx.userId).eq('source', source).in('source_ref', refs.slice(i, i + 100));
     (data ?? []).forEach(d => known.add(d.source_ref));
   }
-  const fresh = rows.filter(r => !known.has(r.source_ref as string)).map(r => ({ ...r, owner_id: ctx.userId, team_id: null, visibility: 'private', source }));
-  for (let i = 0; i < fresh.length; i += 200) await ctx.admin.from('interactions').insert(fresh.slice(i, i + 200));
-  return fresh.length;
+  const fresh = rows.filter(r => !known.has(r.source_ref as string)).map(r => ({ qualifies_outreach: false, qualifies_engagement: false, ...r, owner_id: ctx.userId, team_id: null, visibility: 'private', source }));
+  const added: Added[] = [];
+  for (let i = 0; i < fresh.length; i += 200) {
+    const { data, error } = await ctx.admin.from('interactions').insert(fresh.slice(i, i + 200))
+      .select('id,contact_id,kind,direction,occurred_at,qualifies_outreach,qualifies_engagement');
+    if (error) throw new Error(`timeline: ${error.message}`);
+    added.push(...(data ?? []) as Added[]);
+  }
+  await applyAdded(ctx, source, added);
+  return added.length;
+}
+
+type OwnedContact = { id: string; team_id: string | null; visibility: string; last_outreach_at: string | null; last_engagement_at: string | null };
+const later = (a: string, b: string | null) => !b || new Date(a).getTime() > new Date(b).getTime();
+
+/** Moves last outreach / engagement on the user's own contacts and writes one audit event per new entry. */
+async function applyAdded(ctx: Ctx, source: string, added: Added[]) {
+  if (!added.length) return;
+  const ids = [...new Set(added.map(a => a.contact_id).filter(Boolean))];
+  const owned = new Map<string, OwnedContact>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await ctx.admin.from('contacts').select('id,team_id,visibility,last_outreach_at,last_engagement_at')
+      .eq('owner_id', ctx.userId).in('id', ids.slice(i, i + 100));
+    (data ?? []).forEach(c => owned.set(c.id, c as OwnedContact));
+  }
+  // The newest qualifying new entry per contact and field moves that date, if it's later than today's value.
+  const movers = new Map<string, { outreach?: Added; engagement?: Added }>();
+  for (const a of added) {
+    const c = owned.get(a.contact_id);
+    if (!c) continue;
+    const m = movers.get(c.id) ?? {};
+    if (a.qualifies_outreach && later(a.occurred_at, c.last_outreach_at) && (!m.outreach || later(a.occurred_at, m.outreach.occurred_at))) m.outreach = a;
+    if (a.qualifies_engagement && later(a.occurred_at, c.last_engagement_at) && (!m.engagement || later(a.occurred_at, m.engagement.occurred_at))) m.engagement = a;
+    movers.set(c.id, m);
+  }
+  for (const [id, m] of movers) {
+    const patch: Record<string, string> = {};
+    if (m.outreach) patch.last_outreach_at = m.outreach.occurred_at;
+    if (m.engagement) patch.last_engagement_at = m.engagement.occurred_at;
+    if (Object.keys(patch).length) await ctx.admin.from('contacts').update(patch).eq('id', id).eq('owner_id', ctx.userId);
+  }
+  const events = added.map(a => {
+    const c = owned.get(a.contact_id), m = c ? movers.get(c.id) : undefined;
+    const movedOut = m?.outreach?.id === a.id, movedEng = m?.engagement?.id === a.id;
+    // Shared with the contact's team only when it moved that shared contact's dates (which the team sees anyway).
+    const share = (movedOut || movedEng) && c?.team_id && c.visibility !== 'private';
+    return {
+      owner_id: ctx.userId, team_id: share ? c!.team_id : null, visibility: share ? c!.visibility : 'private',
+      action: 'interaction_added', entity: 'interaction', entity_id: a.id, contact_id: a.contact_id, source,
+      detail: { kind: a.kind, direction: a.direction, occurred_at: a.occurred_at, moved_outreach: movedOut, moved_engagement: movedEng,
+        prev_outreach: c?.last_outreach_at ?? null, prev_engagement: c?.last_engagement_at ?? null },
+    };
+  });
+  for (let i = 0; i < events.length; i += 200) {
+    const { error } = await ctx.admin.from('audit_events').insert(events.slice(i, i + 200));
+    if (error) console.error('audit insert failed', error.message);
+  }
 }
 
 type ContactRow = { id: string; contact_identities: { kind: string; value: string; created_at: string }[] };
@@ -215,15 +275,6 @@ async function readContacts(ctx: Ctx): Promise<ContactRow[]> {
   if (error) throw new Error(`contacts: ${error.message}`);
   return ((data ?? []) as { contact_id: string; identities: ContactRow['contact_identities'] }[])
     .map(r => ({ id: r.contact_id, contact_identities: r.identities ?? [] }));
-}
-
-/** Moves a contact's last outreach / engagement forward. Only contacts the user owns, as with their own permissions. */
-async function bumpContacts(ctx: Ctx, field: 'last_outreach_at' | 'last_engagement_at', latest: Map<string, string>) {
-  for (const [id, at] of latest) {
-    const iso = new Date(at).toISOString().replace(/\.\d{3}Z$/, 'Z');
-    const q = ctx.userDb ? ctx.userDb.from('contacts').update({ [field]: iso }) : ctx.admin.from('contacts').update({ [field]: iso }).eq('owner_id', ctx.userId);
-    await q.eq('id', id).or(`${field}.is.null,${field}.lt.${iso}`);
-  }
 }
 
 // ---------------------------------------------------------------------------------------
@@ -241,14 +292,11 @@ async function syncCalendar(ctx: Ctx, conn: Conn, a: Adapter, token: string, idx
   // Meetings with contacts that already happened go on the contacts' timelines.
   const now = runStart.getTime();
   const past = rows.filter(r => r.contact_ids.length && new Date(r.ends_at ?? r.starts_at).getTime() < now && r.my_response !== 'declined' && !r.all_day);
-  const latest = new Map<string, string>();
   const timeline = past.flatMap(r => r.contact_ids.map(cid => {
-    if ((latest.get(cid) ?? '') < r.starts_at) latest.set(cid, r.starts_at);
     const mins = r.ends_at ? Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60_000) : null;
     return { contact_id: cid, kind: 'calendar', direction: null, occurred_at: r.starts_at, title: r.title, summary: r.location ? `Calendar meeting · ${r.location}` : 'Calendar meeting', source_ref: `${r.source_ref}:${cid}`, duration_sec: mins ? mins * 60 : null, qualifies_engagement: true };
   }));
   await addInteractions(ctx, a.calendarSource, timeline);
-  await bumpContacts(ctx, 'last_engagement_at', latest);
   return { events: rows.length };
 }
 
@@ -293,15 +341,10 @@ async function syncMail(ctx: Ctx, conn: Conn, a: Adapter, token: string, idx: Co
   for (const t of updates) await ctx.admin.from('email_threads').update(t).eq('connection_id', conn.id).eq('thread_id', t.thread_id);
 
   // Timeline entries and last outreach / engagement.
-  const outreach = new Map<string, string>(), engagement = new Map<string, string>();
   const timeline = parsed.flatMap(m => m.contactIds.map(cid => {
-    const map = m.direction === 'outbound' ? outreach : engagement;
-    if ((map.get(cid) ?? '') < m.at) map.set(cid, m.at);
     return { contact_id: cid, kind: 'email', direction: m.direction, occurred_at: m.at, title: m.subject, summary: m.snippet, source_ref: `${m.id}:${cid}`, qualifies_outreach: m.direction === 'outbound', qualifies_engagement: m.direction === 'inbound' };
   }));
   await addInteractions(ctx, a.mailSource, timeline);
-  await bumpContacts(ctx, 'last_outreach_at', outreach);
-  await bumpContacts(ctx, 'last_engagement_at', engagement);
 
   // Suggested promises and meetings from the newest new emails (one AI pass).
   const check = await checkEmails(ctx, conn, a, parsed, timeZone);

@@ -4,6 +4,8 @@ import { friendlyError, requireSupabase } from '../lib/supabase';
 import { useQuery, type Invite, type Membership, type TeamRole } from '../lib/data';
 import { Icon } from '../components/Icon';
 import { initials } from '../components/AppShell';
+import { CoverageLine, useCoverage } from '../components/Coverage';
+import { Link } from 'react-router-dom';
 
 type Member = { user_id: string; role: TeamRole; joined_at: string };
 type Profile = { id: string; full_name: string | null; email: string | null };
@@ -81,6 +83,7 @@ function TeamCard({ teamId, name, myRole, onChange }: { teamId: string; name: st
   const [msg, setMsg] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
   const who = (id: string) => (profiles.data ?? []).find(p => p.id === id);
+  const coverage = useCoverage(teamId);
 
   async function invite(e: FormEvent) {
     e.preventDefault(); setMsg(null);
@@ -105,7 +108,10 @@ function TeamCard({ teamId, name, myRole, onChange }: { teamId: string; name: st
     <section className="card" aria-labelledby={`team-${teamId}`}>
       <div className="card-head">
         <h2 id={`team-${teamId}`}><Icon name="users" /> {name}</h2>
-        <span className="pill blue">You: {myRole}</span>
+        <div className="btn-row nowrap">
+          {isAdmin && <Link className="btn sm" to="/app/team">Team Dashboard</Link>}
+          <span className="pill blue">You: {myRole}</span>
+        </div>
       </div>
       {msg && <div className={`alert ${msg.kind}`} role={msg.kind === 'error' ? 'alert' : 'status'}>{msg.text}</div>}
       <table className="table">
@@ -117,7 +123,8 @@ function TeamCard({ teamId, name, myRole, onChange }: { teamId: string; name: st
               <tr key={m.user_id}>
                 <td><div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <span className="avatar" style={{ cursor: 'default' }}>{initials(p?.full_name, p?.email)}</span>
-                  <div><div style={{ fontWeight: 600 }}>{p?.full_name || p?.email || 'Member'}{m.user_id === user!.id ? ' (you)' : ''}</div><div className="small muted">{p?.email}</div></div>
+                  <div><div style={{ fontWeight: 600 }}>{p?.full_name || p?.email || 'Member'}{m.user_id === user!.id ? ' (you)' : ''}</div><div className="small muted">{p?.email}</div>
+                    {(isAdmin || m.user_id === user!.id) && <CoverageLine rows={coverage.forUser(m.user_id)} loading={coverage.loading} />}</div>
                 </div></td>
                 <td style={{ textTransform: 'capitalize' }}>{m.role}</td>
                 <td style={{ textAlign: 'right' }}>
@@ -130,6 +137,9 @@ function TeamCard({ teamId, name, myRole, onChange }: { teamId: string; name: st
         </tbody>
       </table>
 
+      <p className="small muted" style={{ marginTop: 8 }}>{isAdmin
+        ? 'Sources shows what each person has connected (never their addresses or messages). Missing sources aren’t evidence of inactivity.'
+        : 'Owners and managers see which sources you’ve connected (not your addresses or messages), shown here under your name.'}</p>
       {isAdmin && (
         <>
           <form className="inline-form" style={{ marginTop: 14 }} onSubmit={invite}>

@@ -203,6 +203,50 @@ await as(users.alice, `delete from public.integration_connections where id = $1`
 ok((await asService(`select count(*)::int n from public.meeting_suggestions`)).rows[0].n === 0, 'disconnecting deletes meeting suggestions too');
 ok((await asService(`select (select count(*) from public.calendar_events)::int + (select count(*) from public.email_threads)::int + (select count(*) from public.integration_secrets)::int n`)).rows[0].n === 0, 'disconnecting deletes the tokens, events and email threads');
 
+// ---- Phase 5: source coverage, audit trail and undo ----
+// Team now: alice (owner), carol (manager). Dave joins as a member.
+await as(users.alice, `insert into public.team_invites (team_id, email, role) values ($1, 'dave@other.test', 'member')`, [team]);
+await as(users.dave, `select public.accept_invite((select id from public.my_invites() limit 1))`);
+await asService(`insert into public.integration_connections (user_id, provider, account_email, scopes, last_synced_at) values
+  ($1, 'google', 'carol@gmail.test', '{openid,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/calendar.readonly}', now()),
+  ($2, 'microsoft', 'dave@outlook.test', '{Calendars.Read}', now())`, [users.carol.id, users.dave.id]);
+const cov = async u => (await as(u, `select * from public.team_coverage($1) order by user_id`, [team])).rows;
+const aliceCov = await cov(users.alice);
+ok(aliceCov.length === 2 && aliceCov.some(r => r.user_id === users.carol.id && r.mail && r.calendar) && aliceCov.some(r => r.user_id === users.dave.id && !r.mail && r.calendar),
+   'the owner sees each member\'s connected source types');
+ok(!('account_email' in (aliceCov[0] ?? {})), 'coverage never includes account addresses');
+ok((await cov(users.carol)).length === 2, 'managers see team coverage');
+const daveCov = await cov(users.dave);
+ok(daveCov.length === 1 && daveCov[0].user_id === users.dave.id, 'members see only their own coverage');
+ok((await as(users.bob, `select * from public.team_coverage($1)`, [team])).rows.length === 0, 'people outside the team see no coverage');
+
+const shared = ids['Team shared'];
+await asService(`update public.contacts set last_outreach_at = '2026-01-01T00:00:00Z' where id = $1`, [shared]);
+const addSynced = async (at, moved) => {
+  const it = (await asService(`insert into public.interactions (owner_id, contact_id, kind, direction, occurred_at, title, source, source_ref, qualifies_outreach)
+    values ($1, $2, 'email', 'outbound', $3, 'Quote follow-up', 'gmail', $4, true) returning id`, [users.alice.id, shared, at, 'msg-' + at])).rows[0].id;
+  if (moved) await asService(`update public.contacts set last_outreach_at = $2 where id = $1`, [shared, at]);
+  return (await asService(`insert into public.audit_events (owner_id, team_id, visibility, action, entity, entity_id, contact_id, source, detail)
+    values ($1, $2, $3, 'interaction_added', 'interaction', $4, $5, 'gmail', $6) returning id`,
+    [users.alice.id, moved ? team : null, moved ? 'team' : 'private', it, shared,
+     { kind: 'email', moved_outreach: moved, prev_outreach: '2026-01-01T00:00:00Z' }])).rows[0].id;
+};
+const evA = await addSynced('2026-02-01T00:00:00Z', true);
+const evB = await addSynced('2026-03-01T00:00:00Z', true);
+const evPrivate = await addSynced('2025-12-01T00:00:00Z', false);
+ok((await as(users.carol, `select count(*)::int n from public.audit_events where id = any($1)`, [[evA, evB, evPrivate]])).rows[0].n === 2, 'managers see automatic changes to shared contacts, not private ones');
+ok(await fails(users.carol, `select public.undo_audit_event($1)`, [evB]), 'only the author can undo an automatic change');
+ok(await fails(users.alice, `update public.audit_events set undone_at = now() where id = $1 returning id`, [evB]) ||
+   (await as(users.alice, `select undone_at from public.audit_events where id = $1`, [evB])).rows[0].undone_at === null, 'the audit trail cannot be edited directly');
+await as(users.alice, `select public.undo_audit_event($1)`, [evB]);
+const lastOut = async () => new Date((await asService(`select last_outreach_at from public.contacts where id = $1`, [shared])).rows[0].last_outreach_at).toISOString();
+ok(await lastOut() === '2026-02-01T00:00:00.000Z', 'undoing the newest email puts last outreach back to the previous email');
+ok((await as(users.alice, `select count(*)::int n from public.interactions where contact_id = $1 and undone_at is null and source = 'gmail'`, [shared])).rows[0].n === 2, 'the undone entry is hidden from the timeline');
+await as(users.alice, `select public.undo_audit_event($1)`, [evA]);
+ok(await lastOut() === '2026-01-01T00:00:00.000Z', 'undoing again restores the date from before the sync');
+await as(users.alice, `select public.undo_audit_event($1)`, [evA]);
+ok((await as(users.alice, `select count(*)::int n from public.audit_events where undone_at is not null and id = any($1)`, [[evA, evB]])).rows[0].n === 2, 'undone changes are marked, and undoing twice is harmless');
+
 // Signed-out visitors (anon) get nothing.
 async function asAnon(sql) {
   await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false)"); await db.exec('set role anon');

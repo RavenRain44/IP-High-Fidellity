@@ -1,15 +1,18 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
+import { requireSupabase } from '../lib/supabase';
+import { useQuery } from '../lib/data';
 import { BrandMark, Icon, type IconName } from './Icon';
 
-const NAV: { to: string; label: string; icon: IconName; mobile?: boolean }[] = [
+const NAV: { to: string; label: string; icon: IconName; mobile?: boolean; managers?: boolean }[] = [
   { to: '/app', label: 'Dashboard', icon: 'dashboard', mobile: true },
   { to: '/app/capture', label: 'Record', icon: 'mic', mobile: true },
   { to: '/app/meetings', label: 'Meetings', icon: 'file', mobile: true },
   { to: '/app/contacts', label: 'Contacts', icon: 'users', mobile: true },
   { to: '/app/projects', label: 'Projects', icon: 'briefcase' },
   { to: '/app/integrations', label: 'Integrations', icon: 'link' },
+  { to: '/app/team', label: 'Team Dashboard', icon: 'dashboard', managers: true },
   { to: '/app/teams', label: 'Teams', icon: 'shield' },
   { to: '/app/account', label: 'Account', icon: 'settings' },
 ];
@@ -39,6 +42,9 @@ export function AppShell() {
   const [open, setOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setOpen(false), [loc.pathname]);
+  // The Team Dashboard link only for owners and managers of a team.
+  const roles = useQuery<{ role: string }[]>(() => requireSupabase().from('team_members').select('role').eq('user_id', user!.id), [user?.id, loc.pathname === '/app/teams']);
+  const manages = (roles.data ?? []).some(r => r.role === 'owner' || r.role === 'manager');
 
   return (
     <div className="shell">
@@ -53,7 +59,7 @@ export function AppShell() {
       </header>
       <aside className={`side ${open ? 'open' : ''}`} aria-label="Main navigation">
         <nav className="nav">
-          {NAV.map(n => (
+          {NAV.filter(n => !n.managers || manages || loc.pathname === n.to).map(n => (
             <NavLink key={n.to} to={n.to} end={n.to === '/app'}><Icon name={n.icon} /> {n.label}</NavLink>
           ))}
         </nav>
