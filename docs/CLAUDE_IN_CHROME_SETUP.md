@@ -99,42 +99,74 @@ Anything that didn't match these instructions: <notes>
 
 ---
 
-## Part 3 — Microsoft sign-in
+## Part 3 — Microsoft: sign-in, Outlook mail and calendar
+
+One Azure app registration covers both "Sign in with Microsoft" and connecting Outlook mail and
+calendar (Microsoft 365 work/school accounts and personal Outlook.com accounts). Claude Code already
+deployed the server side; this part registers the app and stores its ID and secret in Supabase.
+
+Good to know:
+- Personal Outlook.com / Hotmail accounts can connect right away.
+- Work or school accounts in *other* organizations may see "Need admin approval". Their IT admin must
+  approve LuMaCo, and Microsoft usually requires a verified publisher (a Microsoft Partner Network ID)
+  before other organizations' users can consent at all. Accounts in your own tenant are fine.
+- LuMaCo asks for read-only mail and calendar access. "Calendars.ReadWrite" is only requested later,
+  when you choose "Allow adding events".
 
 ````text
-Help me set up "Sign in with Microsoft" for my Supabase project. My Supabase project ref is YOUR-PROJECT-REF. Work in a new tab. Stop and ask me whenever a step needs me to sign in, create an account, approve something, or handle a secret — never type or copy secrets yourself.
+Help me register my app LuMaCo with Microsoft for sign-in plus read access to Outlook mail and calendar. My Supabase project ref is czdfwbgfncdqqaxwcicg. Work in a new tab. Stop and ask me whenever a step needs me to sign in, create an account, approve something, or handle a secret — never type, read back, or copy secrets yourself.
 
 1. Go to https://entra.microsoft.com. If I'm not signed in, stop and let me sign in (a personal Microsoft account works; if it asks to create a free Azure tenant or account, stop and let me decide).
-2. Go to Identity / Entra ID → App registrations → New registration:
+
+2. Go to Entra ID → App registrations. If an app named LuMaCo already exists, open it and skip to step 3. Otherwise click New registration:
    - Name: LuMaCo
    - Supported account types: "Accounts in any organizational directory (any Microsoft Entra ID tenant – multitenant) and personal Microsoft accounts"
-   - Redirect URI: platform "Web", value https://YOUR-PROJECT-REF.supabase.co/auth/v1/callback
+   - Redirect URI: platform "Web", value https://czdfwbgfncdqqaxwcicg.supabase.co/auth/v1/callback
    - Register.
-3. On the app's Overview page, note the Application (client) ID (not secret).
-4. Go to Certificates & secrets → Client secrets → New client secret:
-   - Description: supabase
+
+3. Open Authentication (or "Redirect URIs") for the app. Under the Web platform make sure BOTH of these redirect URIs are listed, adding any that are missing, then Save:
+   https://czdfwbgfncdqqaxwcicg.supabase.co/auth/v1/callback
+   https://czdfwbgfncdqqaxwcicg.supabase.co/functions/v1/microsoft-connect
+   Leave "Access tokens" and "ID tokens" (implicit grant) unticked.
+
+4. On the Overview page, note the Application (client) ID (not secret).
+
+5. Certificates & secrets → Client secrets → New client secret:
+   - Description: lumaco
    - Expires: 24 months (or the longest offered)
    - Add it.
    - STOP: tell me to copy the secret's "Value" column myself right now (it is only shown once). Do not read it or copy it.
-5. Go to API permissions and confirm "Microsoft Graph → User.Read" is present (it's added by default). Add the delegated permissions "email", "openid" and "profile" if they're missing. Do not grant admin consent unless I ask.
-6. Open https://supabase.com/dashboard/project/YOUR-PROJECT-REF/auth/providers and open the Azure (Microsoft) provider.
+
+6. API permissions → Add a permission → Microsoft Graph → Delegated permissions. Make sure these are all present, adding any that are missing:
+   openid, email, profile, offline_access, User.Read, Mail.Read, Calendars.Read, Calendars.ReadWrite
+   Do not click "Grant admin consent" unless I ask.
+
+7. Sign-in. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/auth/providers and open the Azure (Microsoft) provider.
    - Turn it on.
    - You may paste the Application (client) ID into "Application (client) ID".
    - STOP and ask me to paste the secret Value into "Secret Value" myself.
    - Leave "Azure Tenant URL" blank (so work, school and personal accounts can all sign in).
    - After I say done, save.
-7. Print exactly this block, filled in:
+
+8. Mail and calendar. Open https://supabase.com/dashboard/project/czdfwbgfncdqqaxwcicg/functions/secrets
+   - Add a secret named MICROSOFT_CLIENT_ID: type the name, then STOP and ask me to paste the Application (client) ID.
+   - Add a secret named MICROSOFT_CLIENT_SECRET: type the name, then STOP and ask me to paste the secret Value.
+   - After I say done, save. Confirm MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET appear in the list (values stay hidden).
+
+9. Print exactly this block, filled in:
 
 REPORT BACK — MICROSOFT
-App registration name: LuMaCo
-Application (client) ID: <id>
+App registration name: LuMaCo (new or existing)
 Supported accounts: multitenant + personal: yes/no
-Redirect URI added: yes/no
+Redirect URIs present: auth/v1/callback yes/no, functions/v1/microsoft-connect yes/no
 Client secret expires: <date> (value copied by me)
 API permissions: <list>
 Supabase Azure provider enabled: yes/no, tenant URL blank: yes/no
+Edge Function secrets present: MICROSOFT_CLIENT_ID yes/no, MICROSOFT_CLIENT_SECRET yes/no
 Anything that didn't match these instructions: <notes>
 ````
+
+Then open https://lumaco-bvs.pages.dev/app/integrations, click **Connect Microsoft**, sign in, and accept.
 
 ---
 

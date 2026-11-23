@@ -445,3 +445,15 @@ verify_jwt = false
 # Checks the user's session itself; adds confirmed meetings to Google Calendar.
 [functions.google-calendar]
 verify_jwt = false
+
+# Microsoft's OAuth redirect carries no Supabase session; the function checks sessions itself for its POST actions.
+[functions.microsoft-connect]
+verify_jwt = false
+
+# Syncs every connected Google and Microsoft account; checks the user's session itself.
+[functions.accounts-sync]
+verify_jwt = false
+
+# Adds confirmed meetings to Google or Outlook calendars; checks the user's session itself.
+[functions.calendar-add]
+verify_jwt = false

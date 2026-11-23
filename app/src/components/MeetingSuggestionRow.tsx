@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { requireSupabase, friendlyError } from '../lib/supabase';
-import { addMeetingToCalendar, calendarTemplateLink, connectGoogle, type MeetingSuggestion } from '../lib/google';
+import { addMeetingToCalendar, calendarTemplateLink, canAddEvents, connectAccount, isMailProvider, PROVIDER_NAME, type MeetingSuggestion } from '../lib/accounts';
+import type { Connection } from '../lib/data';
 import { Icon } from './Icon';
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -18,10 +19,13 @@ function when(m: MeetingSuggestion): string {
  * A meeting LuMaCo found in an email. Nothing happens until the user reviews it: they can fix the
  * details, choose whether to invite the contact, and then add it to Google Calendar (or dismiss it).
  */
-export function MeetingSuggestionRow({ m, names, canWrite, onDone }: {
-  m: MeetingSuggestion; names: string[]; canWrite: boolean; onDone: (message: string) => void;
+export function MeetingSuggestionRow({ m, names, conn, onDone }: {
+  m: MeetingSuggestion; names: string[]; conn: Connection | undefined; onDone: (message: string) => void;
 }) {
   const sb = requireSupabase();
+  const provider = conn && isMailProvider(conn.provider) ? conn.provider : 'google';
+  const canWrite = canAddEvents(conn);
+  const calendarName = provider === 'google' ? 'Google Calendar' : 'Outlook';
   const start = new Date(m.starts_at);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState(m.title);
@@ -56,10 +60,10 @@ export function MeetingSuggestionRow({ m, names, canWrite, onDone }: {
   }
   async function allow() {
     setBusy(true);
-    const err = await connectGoogle({ calendarWrite: true, returnTo: '/app' });
+    const err = await connectAccount(provider, { calendarWrite: true, returnTo: '/app' });
     if (err) { setError(err); setBusy(false); }
   }
-  const template = valid && startsAt && endsAt ? calendarTemplateLink({
+  const template = valid && startsAt && endsAt ? calendarTemplateLink(provider, conn?.account_email ?? null, {
     title: title.trim(), starts_at: startsAt.toISOString(), ends_at: endsAt.toISOString(), location,
     details: m.evidence ? `From an email: “${m.evidence}”` : undefined, guests: invite ? m.attendee_emails : undefined,
   }) : null;
@@ -89,18 +93,18 @@ export function MeetingSuggestionRow({ m, names, canWrite, onDone }: {
             {error && <p className="mic-error" role="alert">{error}</p>}
             {needsPermission ? (
               <div className="permission-box">
-                <p className="small">LuMaCo can only read your calendar right now. Allow it to add meetings you confirm (Google will ask), or add this one yourself in Google Calendar.</p>
+                <p className="small">LuMaCo can only read your calendar right now. Allow it to add meetings you confirm ({PROVIDER_NAME[provider]} will ask), or add this one yourself in {calendarName}.</p>
                 <div className="btn-row">
                   <button type="button" className="btn sm primary" onClick={allow} disabled={busy}>{busy ? 'Opening Google…' : 'Allow adding events'}</button>
                   {template && <a className="btn sm" href={template} target="_blank" rel="noopener noreferrer"
-                    onClick={() => void setStatus('added', 'Opened in Google Calendar. Save it there to finish.')}>Open in Google Calendar</a>}
+                    onClick={() => void setStatus('added', `Opened in ${calendarName}. Save it there to finish.`)}>Open in {calendarName}</a>}
                 </div>
               </div>
             ) : (
               <div className="btn-row">
                 <button className="btn sm primary" type="submit" disabled={!valid || busy}><Icon name="calendar" size="sm" /> {busy ? 'Adding…' : invite ? 'Add and send invite' : 'Add to my calendar'}</button>
                 <button type="button" className="btn sm" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
-                {!canWrite && <span className="small muted">Google will ask once for permission to add events.</span>}
+                {!canWrite && <span className="small muted">{PROVIDER_NAME[provider]} will ask once for permission to add events.</span>}
               </div>
             )}
           </form>

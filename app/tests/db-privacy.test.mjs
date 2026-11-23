@@ -168,6 +168,14 @@ await as(users.carol, `update public.email_threads set dismissed_at = null where
 ok((await as(users.alice, `select dismissed_at from public.email_threads where id=$1`, [thread])).rows[0].dismissed_at !== null, 'others cannot change your email threads');
 const sugg = (await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'gmail', 'm1') returning id`, [users.alice.id])).rows[0].id;
 ok(await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'gmail', 'm1')`, [users.alice.id]).then(() => false, () => true), 'the same email promise is never suggested twice');
+await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'outlook', 'o1')`, [users.alice.id]);
+ok(await asService(`insert into public.promises (owner_id, title, status, source, source_ref) values ($1, 'Send revised drawings', 'suggested', 'outlook', 'o1')`, [users.alice.id]).then(() => false, () => true), 'the same Outlook promise is never suggested twice');
+const msConn = (await asService(`insert into public.integration_connections (user_id, provider, account_email, scopes) values ($1, 'microsoft', $2, '{Mail.Read,Calendars.Read}') returning id`, [users.alice.id, 'alice@contoso.test'])).rows[0].id;
+await asService(`insert into public.calendar_events (owner_id, connection_id, source_ref, title, starts_at) values ($1, $2, 'AAMk1', 'Outlook meeting', now() + interval '1 day')`, [users.alice.id, msConn]);
+ok((await as(users.alice, `select count(*)::int n from public.integration_connections where provider='microsoft'`)).rows[0].n === 1, 'a Microsoft account connects alongside Google');
+ok((await as(users.carol, `select count(*)::int n from public.calendar_events`)).rows[0].n === 0, 'your manager cannot see your Outlook calendar');
+await as(users.alice, `delete from public.integration_connections where id = $1`, [msConn]);
+ok((await asService(`select count(*)::int n from public.calendar_events where connection_id = $1`, [msConn])).rows[0].n === 0, 'disconnecting Microsoft deletes its synced events');
 await as(users.alice, `update public.promises set status = 'open' where id = $1`, [sugg]);
 ok((await as(users.alice, `select status from public.promises where id=$1`, [sugg])).rows[0].status === 'open', 'you can keep a suggested promise');
 const ms = (await asService(`insert into public.meeting_suggestions (owner_id, connection_id, source_ref, title, starts_at, contact_ids) values ($1, $2, 'm9', 'Site walk with Sarah', now() + interval '2 days', '{}') returning id`, [users.alice.id, conn])).rows[0].id;

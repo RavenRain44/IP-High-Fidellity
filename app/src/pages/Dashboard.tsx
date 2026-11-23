@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { friendlyError, requireSupabase } from '../lib/supabase';
 import { dateTime, dueLabel, useQuery, type Connection } from '../lib/data';
-import { canAddEvents, connectResult, useAutoSync, type MeetingSuggestion } from '../lib/google';
+import { connectResult, isMailProvider, useAutoSync, type MeetingSuggestion } from '../lib/accounts';
 import { MeetingSuggestionRow } from '../components/MeetingSuggestionRow';
 import { Icon } from '../components/Icon';
 
@@ -71,14 +71,14 @@ export function Dashboard() {
   const eventContactIds = [...new Set([...(events.data ?? []), ...(meetingSugg.data ?? [])].flatMap(e => e.contact_ids))];
   const names = useQuery<{ id: string; full_name: string }[]>(() => sb.from('contacts').select('id,full_name').in('id', eventContactIds.length ? eventContactIds : ['00000000-0000-0000-0000-000000000000']), [eventContactIds.join()]);
   const nameOf = (id: string) => names.data?.find(n => n.id === id)?.full_name;
-  const google = (conns.data ?? []).filter(c => c.provider === 'google');
+  const accounts = (conns.data ?? []).filter(c => isMailProvider(c.provider));
   useAutoSync(conns.data, () => { void threads.reload(); void suggested.reload(); void events.reload(); void promises.reload(); void meetingSugg.reload(); void conns.reload(); });
 
-  // Back from Google (e.g. after allowing LuMaCo to add events): show the result once.
+  // Back from Google or Microsoft (e.g. after allowing LuMaCo to add events): show the result once.
   const [params, setParams] = useSearchParams();
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(() => connectResult(params));
   const cleared = useRef(false);
-  useEffect(() => { if (!cleared.current && params.get('google')) { cleared.current = true; setParams({}, { replace: true }); } }, [params, setParams]);
+  useEffect(() => { if (!cleared.current && (params.get('google') || params.get('microsoft'))) { cleared.current = true; setParams({}, { replace: true }); } }, [params, setParams]);
   const meetingDone = (text: string) => { setNotice({ ok: true, text }); void meetingSugg.reload(); void events.reload(); };
 
   async function dismissThread(id: string) {
@@ -102,7 +102,7 @@ export function Dashboard() {
   const steps = [
     { done: !!n?.contacts, title: 'Add your first contacts', sub: 'The customers and partners LuMaCo should keep up to date.', to: '/app/contacts?c=new', cta: 'Add contact' },
     { done: !!n?.meetings, title: 'Record a meeting or voice note', sub: 'Transcribed and turned into notes and promises for you to review.', to: '/app/capture', cta: 'Record' },
-    { done: !!n?.connections, title: 'Connect your email and calendar', sub: 'Google now; Outlook next. Only email with your contacts is read.', to: '/app/integrations', cta: 'Connect' },
+    { done: !!n?.connections, title: 'Connect your email and calendar', sub: 'Google or Microsoft 365 / Outlook. Only email with your contacts is read.', to: '/app/integrations', cta: 'Connect' },
     { done: !!n?.teams, title: 'Create or join a team (optional)', sub: 'Share work records with your team. Private notes stay private.', to: '/app/teams', cta: 'Teams' },
   ];
   const remaining = steps.filter(s => !s.done).length;
@@ -144,7 +144,7 @@ export function Dashboard() {
             ))}
             {plannedMeetings.map(m => (
               <MeetingSuggestionRow key={m.id} m={m} names={m.contact_ids.map(nameOf).filter(Boolean) as string[]}
-                canWrite={canAddEvents(google.find(c => c.id === m.connection_id))} onDone={meetingDone} />
+                conn={accounts.find(c => c.id === m.connection_id)} onDone={meetingDone} />
             ))}
             {replies.map(t => (
               <div className="row" key={t.id}>
@@ -195,7 +195,7 @@ export function Dashboard() {
               <Link className="btn big" to="/app/capture?kind=notes"><Icon name="edit" /> Record notes</Link>
             </div>
           </section>
-          {google.length > 0 && (
+          {accounts.length > 0 && (
             <section className="card" aria-labelledby="up-h">
               <div className="card-head"><h2 id="up-h"><Icon name="calendar" /> Upcoming meetings</h2><span className="small muted">Next 7 days</span></div>
               {(events.data ?? []).length ? events.data!.map(e => {

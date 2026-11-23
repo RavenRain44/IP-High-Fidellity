@@ -51,7 +51,7 @@ Only **approved contacts** create relationship history, promises or reports (pro
 
 1. **Foundation** (this change): `app/` scaffold, welcome/sign-in/sign-up/reset/onboarding, app shell, teams + invites UI, database schema + RLS, demo at `/demo/`, PWA, Cloudflare config, setup guide.
 2. **Contacts and capture**: real contacts/companies/projects CRUD, Capture panel with real recording, Deepgram transcription, Claude note extraction, review screen, project files.
-3. **Google + Microsoft**: OAuth connect/disconnect, initial sync, incremental sync, approved-contact matching, Needs Attention + Open Promises from real data. *Google is built (`google-connect`, `google-sync`, migration `20261123000000_google.sql`); Microsoft is next.*
+3. **Google + Microsoft**: OAuth connect/disconnect, initial sync, incremental sync, approved-contact matching, Needs Attention + Open Promises from real data. *Built: Google (`google-connect`) and Microsoft (`microsoft-connect`), synced by `accounts-sync` and written to by `calendar-add` through provider adapters in `supabase/functions/_shared/`.*
 4. **Twilio**: business number, call recording with consent, SMS, call-duration engagement rule (>2:00).
 5. **Teams**: manager view from shared records only, source-coverage reporting, audit trail, undo.
 6. **Hardening**: Playwright tests, error monitoring, data export/delete, privacy policy and terms, provider verification.

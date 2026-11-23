@@ -1,5 +1,11 @@
 // Google OAuth, Calendar and Gmail helpers shared by google-connect and google-sync.
 // Pure functions (parsing, queries, mapping) are exported separately so they can be unit-tested.
+import { decodeEntities, displayName, emailsIn, matchContacts, newText, type ContactIndex, type ParsedMessage } from './mail-common.ts';
+export * from './mail-common.ts';
+import { needsReconnect, ProviderError, type Adapter, type NormEvent, type TokenResponse } from './provider.ts';
+export { needsReconnect } from './provider.ts';
+export type { TokenResponse } from './provider.ts';
+import { pool } from './mail-common.ts';
 
 export const SCOPES = [
   'openid',
@@ -12,11 +18,8 @@ export const CALENDAR_WRITE = 'https://www.googleapis.com/auth/calendar.events';
 export const KNOWN_SCOPES = [...SCOPES, CALENDAR_WRITE];
 export const canWriteCalendar = (scopes: string[]) => scopes.includes(CALENDAR_WRITE);
 
-export class GoogleError extends Error {
-  constructor(message: string, public status = 0, public code = '') { super(message); }
-}
-/** The refresh token was revoked or expired (Google "Testing" apps: after 7 days). Needs reconnecting. */
-export const needsReconnect = (e: unknown) => e instanceof GoogleError && (e.code === 'invalid_grant' || e.status === 401);
+/** Google API errors. In "Testing" mode Google revokes refresh tokens after 7 days (needsReconnect). */
+export class GoogleError extends ProviderError {}
 
 // ---------------------------------------------------------------------------------------
 // OAuth
@@ -36,7 +39,6 @@ export function authUrl(opts: { clientId: string; redirectUri: string; state: st
   return `https://accounts.google.com/o/oauth2/v2/auth?${p}`;
 }
 
-export type TokenResponse = { access_token: string; expires_in: number; refresh_token?: string; scope?: string; id_token?: string };
 
 async function tokenRequest(body: Record<string, string>): Promise<TokenResponse> {
   const res = await fetch('https://oauth2.googleapis.com/token', {
@@ -82,44 +84,6 @@ export async function gapi<T>(token: string, url: string, init?: { method: strin
   return res.json() as Promise<T>;
 }
 
-/** Runs `fn` over items with at most `limit` in flight. */
-export async function pool<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (next < items.length) { const i = next++; out[i] = await fn(items[i]); }
-  }));
-  return out;
-}
-
-// ---------------------------------------------------------------------------------------
-// Contacts: approved contacts are matched by their saved email addresses
-// ---------------------------------------------------------------------------------------
-export type ContactIndex = Map<string, string[]>;   // email (lowercase) -> contact ids
-
-export function buildContactIndex(contacts: { id: string; contact_identities?: { kind: string; value: string }[] | null }[]): ContactIndex {
-  const idx: ContactIndex = new Map();
-  for (const c of contacts) for (const i of c.contact_identities ?? []) {
-    if (i.kind !== 'email') continue;
-    const e = i.value.trim().toLowerCase();
-    if (!e) continue;
-    idx.set(e, [...(idx.get(e) ?? []), c.id]);
-  }
-  return idx;
-}
-
-export function matchContacts(emails: string[], idx: ContactIndex): string[] {
-  return [...new Set(emails.flatMap(e => idx.get(e.toLowerCase()) ?? []))];
-}
-
-const EMAIL_RE = /[A-Z0-9._%+'-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
-export const emailsIn = (header: string | undefined | null) => [...new Set((header ?? '').match(EMAIL_RE)?.map(e => e.toLowerCase()) ?? [])];
-export function displayName(from: string | undefined | null): string {
-  const s = (from ?? '').trim();
-  const m = /^"?([^"<]+?)"?\s*</.exec(s);
-  return m ? m[1].trim() : (emailsIn(s)[0] ?? s);
-}
-
 // ---------------------------------------------------------------------------------------
 // Calendar
 // ---------------------------------------------------------------------------------------
@@ -132,7 +96,7 @@ export type GEvent = {
   eventType?: string;
 };
 
-export function mapEvent(ev: GEvent, idx: ContactIndex) {
+export function mapEvent(ev: GEvent, idx: ContactIndex): NormEvent | null {
   const allDay = !ev.start?.dateTime;
   const starts = ev.start?.dateTime ?? (ev.start?.date ? `${ev.start.date}T00:00:00Z` : null);
   if (!starts) return null;
@@ -187,8 +151,6 @@ function findPart(p: GPart | undefined, type: string): GPart | null {
   return null;
 }
 
-const decodeEntities = (s: string) => s.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-
 /** The new text of a message: plain text preferred, quoted replies and signatures-after-quote removed. */
 export function messageText(m: GMessage, max = 2500): string {
   let text = '';
@@ -201,20 +163,8 @@ export function messageText(m: GMessage, max = 2500): string {
       .replace(/<br\s*\/?>|<\/p>|<\/div>/gi, '\n').replace(/<[^>]+>/g, ''));
   }
   if (!text) text = m.snippet ?? '';
-  const lines: string[] = [];
-  for (const line of text.replace(/\r/g, '').split('\n')) {
-    if (/^On .{4,200}wrote:\s*$/.test(line.trim()) || /^-{2,}\s*(Original|Forwarded) Message/i.test(line.trim()) || /^From: .+@/.test(line.trim()) && lines.length > 2) break;
-    if (line.trimStart().startsWith('>')) continue;
-    lines.push(line);
-  }
-  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+  return newText(text, max);
 }
-
-export type ParsedMessage = {
-  id: string; threadId: string; at: string; direction: 'inbound' | 'outbound';
-  from: string; fromName: string; subject: string; snippet: string; contactIds: string[];
-  contactEmails: string[];   // the addresses on this message that belong to approved contacts
-};
 
 export function parseMessage(m: GMessage, accountEmail: string, idx: ContactIndex): ParsedMessage {
   const from = header(m, 'From');
@@ -232,28 +182,72 @@ export function parseMessage(m: GMessage, accountEmail: string, idx: ContactInde
   };
 }
 
-export type ThreadState = { last_message_at: string; message_count: number; dismissed_at: string | null; contact_ids: string[] };
+export const threadLink = (accountEmail: string, threadId: string) =>
+  `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(accountEmail)}#all/${threadId}`;
 
-/** Folds newly synced messages into a thread's stored state. */
-export function foldThread(existing: ThreadState | null, msgs: ParsedMessage[]) {
-  const sorted = [...msgs].sort((a, b) => a.at.localeCompare(b.at));
-  const last = sorted[sorted.length - 1];
-  const newer = !existing || last.at > existing.last_message_at;
-  const contacts = [...new Set([...(existing?.contact_ids ?? []), ...msgs.flatMap(m => m.contactIds)])];
+// ---------------------------------------------------------------------------------------
+// Adapter used by the shared sync and calendar code
+// ---------------------------------------------------------------------------------------
+const has = (scopes: string[], suffix: string) => scopes.some(s => s.endsWith(suffix));
+
+export function googleAdapter(client: { id: string; secret: string }): Adapter {
   return {
-    newer,
-    row: {
-      contact_ids: contacts,
-      message_count: (existing?.message_count ?? 0) + msgs.length,
-      ...(newer ? {
-        subject: last.subject, snippet: last.snippet, last_message_at: last.at, last_from: last.fromName,
-        last_direction: last.direction, needs_reply: last.direction === 'inbound',
-        // They wrote again after you dismissed it: bring it back.
-        dismissed_at: last.direction === 'inbound' ? null : existing?.dismissed_at ?? null,
-      } : {}),
+    id: 'google', name: 'Google', mailSource: 'gmail', calendarSource: 'google_calendar',
+    canReadMail: s => has(s, '/gmail.readonly'),
+    canReadCalendar: s => has(s, '/calendar.readonly') || has(s, '/calendar.events'),
+    canWriteCalendar: s => s.includes(CALENDAR_WRITE),
+    refresh: rt => refreshAccessToken({ refreshToken: rt, clientId: client.id, clientSecret: client.secret }),
+    timeZone: token => gapi<{ value?: string }>(token, 'https://www.googleapis.com/calendar/v3/users/me/settings/timezone').then(r => r.value || null, () => null),
+
+    async events(token, from, to, idx) {
+      const events: GEvent[] = [];
+      let page = '';
+      for (let i = 0; i < 4; i++) {
+        const q = new URLSearchParams({ timeMin: from.toISOString(), timeMax: to.toISOString(), singleEvents: 'true', orderBy: 'startTime', maxResults: '250', ...(page ? { pageToken: page } : {}) });
+        const res = await gapi<{ items?: GEvent[]; nextPageToken?: string }>(token, `https://www.googleapis.com/calendar/v3/calendars/primary/events?${q}`);
+        events.push(...(res.items ?? []));
+        if (!res.nextPageToken) break;
+        page = res.nextPageToken;
+      }
+      return events.filter(e => e.status !== 'cancelled' && e.eventType !== 'workingLocation' && e.eventType !== 'outOfOffice')
+        .map(e => mapEvent(e, idx)).filter((e): e is NormEvent => !!e);
+    },
+
+    async messages(token, q) {
+      // 1. Ids of matching messages (Gmail search does the contact filtering).
+      const queries = [...gmailQueries(q.recent, Math.floor(q.recentAfter.getTime() / 1000)), ...gmailQueries(q.backfill, Math.floor(q.backfillAfter.getTime() / 1000))];
+      const ids = new Map<string, string>();
+      for (const query of queries) {
+        let page = '';
+        do {
+          const p = new URLSearchParams({ q: query, maxResults: '100', ...(page ? { pageToken: page } : {}) });
+          const res = await gapi<{ messages?: { id: string; threadId: string }[]; nextPageToken?: string }>(token, `https://gmail.googleapis.com/gmail/v1/users/me/messages?${p}`);
+          (res.messages ?? []).forEach(m => ids.set(m.id, m.threadId));
+          page = ids.size < q.cap * 2 ? res.nextPageToken ?? '' : '';
+        } while (page);
+      }
+      // 2. Download only the new ones (newest first: Gmail lists newest first).
+      const todo = [...ids.keys()].filter(id => !q.skip.has(id));
+      const fetched = await pool(todo.slice(0, q.cap), 6, id =>
+        gapi<GMessage>(token, `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`).catch(e => { if (needsReconnect(e)) throw e; return null; }));
+      const messages = fetched
+        .filter((m): m is GMessage => !!m && !(m.labelIds ?? []).some(l => l === 'SPAM' || l === 'TRASH' || l === 'DRAFT'))
+        .map(m => ({ ...parseMessage(m, q.account, q.idx), text: messageText(m), link: threadLink(q.account, m.threadId) }))
+        .filter(m => m.contactIds.length);
+      return { messages, more: todo.length > q.cap };
+    },
+
+    async createEvent(token, ev) {
+      const event = await gapi<GEvent>(token,
+        `https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=${ev.invite.length ? 'all' : 'none'}`,
+        { method: 'POST', body: {
+          summary: ev.title, location: ev.location, description: ev.description,
+          start: { dateTime: ev.starts_at, timeZone: ev.time_zone },
+          end: { dateTime: ev.ends_at, timeZone: ev.time_zone },
+          ...(ev.invite.length ? { attendees: ev.invite.map(email => ({ email })) } : {}),
+          ...(ev.source_link ? { source: { title: 'Email', url: ev.source_link } } : {}),
+        } });
+      return mapEvent(event, new Map());
     },
   };
 }
-
-export const threadLink = (accountEmail: string, threadId: string) =>
-  `https://mail.google.com/mail/u/0/?authuser=${encodeURIComponent(accountEmail)}#all/${threadId}`;
