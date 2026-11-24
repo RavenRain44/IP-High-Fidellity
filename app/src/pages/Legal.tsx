@@ -6,10 +6,9 @@ import { Link } from 'react-router-dom';
 import { BrandMark } from '../components/Icon';
 
 export const LEGAL = {
-  company: '[COMPANY NAME]',          // the legal entity that runs LuMaCo
-  contact: '[CONTACT EMAIL]',         // privacy and support address
-  address: '[POSTAL ADDRESS]',
-  jurisdiction: '[STATE / COUNTRY]',  // governing law for the Terms
+  company: 'the LuMaCo team',          // the legal entity that runs LuMaCo
+  contact: 'lumaco.support@gmail.com',         // privacy and support address
+  jurisdiction: 'Nebraska, United States',  // governing law for the Terms
   effective: 'November 24, 2026',
 };
 const isDraft = Object.values(LEGAL).some(v => v.startsWith('['));
@@ -29,7 +28,7 @@ function LegalPage({ title, children }: { title: string; children: ReactNode }) 
         <h1>{title}</h1>
         <p className="muted">Effective {LEGAL.effective}</p>
         {children}
-        <p className="muted small" style={{ marginTop: 32 }}>Questions: {LEGAL.contact} · {LEGAL.company}, {LEGAL.address}</p>
+        <p className="muted small" style={{ marginTop: 32 }}>Questions: {LEGAL.contact} · {LEGAL.company}</p>
       </main>
     </div>
   );
