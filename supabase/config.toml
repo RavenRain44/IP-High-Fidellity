@@ -457,3 +457,7 @@ verify_jwt = false
 # Adds confirmed meetings to Google or Outlook calendars; checks the user's session itself.
 [functions.calendar-add]
 verify_jwt = false
+
+# Checks the user's session itself; deletes the account after a typed confirmation.
+[functions.account-delete]
+verify_jwt = false

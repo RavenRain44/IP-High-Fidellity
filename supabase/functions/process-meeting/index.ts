@@ -6,6 +6,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { formatTranscript, transcribe, type Utterance } from '../_shared/deepgram.ts';
+import { logError } from '../_shared/log-error.ts';
 import { buildPrompt, draftNotes, RefusedError, sanitize, type ContactRef, type ProjectRef } from '../_shared/notes.ts';
 
 const CORS = {
@@ -132,6 +133,7 @@ async function processMeeting(ctx: {
   } catch (err) {
     const message = err instanceof RefusedError || err instanceof Error ? err.message : 'Processing failed.';
     console.error('process-meeting failed', meeting.id, err);
+    if (!(err instanceof RefusedError)) await logError(admin, 'process-meeting', err, ctx.userId);
     // Keep the audio so the user can retry.
     await setStatus({ status: 'failed', error: message.slice(0, 500) });
   }

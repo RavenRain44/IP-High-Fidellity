@@ -20,7 +20,7 @@ function AuthLayout({ title, sub, children }: { title: string; sub: string; chil
             <div><Icon name="shield" /> Private notes stay private, even inside a team</div>
           </div>
         </div>
-        <span className="small" style={{ color: '#9fb0c6' }}>© {new Date().getFullYear()} LuMaCo</span>
+        <span className="small auth-legal" style={{ color: '#9fb0c6' }}>© {new Date().getFullYear()} LuMaCo · <Link to="/privacy">Privacy</Link> · <Link to="/terms">Terms</Link></span>
       </section>
       <section className="auth-panel">
         <div style={{ width: '100%', maxWidth: 380, margin: '0 auto' }}>
@@ -77,6 +77,7 @@ function useRedirectIfSignedIn() {
 
 export function SignIn() {
   const { loading, to } = useRedirectIfSignedIn();
+  const deleted = useLocation().search.includes('deleted=1');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -92,6 +93,7 @@ export function SignIn() {
   }
   return (
     <AuthLayout title="Sign in" sub="Welcome back to LuMaCo.">
+      {deleted && <div className="alert ok" role="status">Your account and data have been deleted.</div>}
       <OAuthButtons verb="Continue" />
       {error && <div className="alert error" role="alert">{error}</div>}
       <form onSubmit={submit} noValidate>
@@ -148,7 +150,7 @@ export function SignUp() {
       </form>
       <div className="auth-foot">
         <span>Already have an account? <Link to="/signin">Sign in</Link></span>
-        <span className="small">By creating an account you agree to the Terms and Privacy Policy.</span>
+        <span className="small">By creating an account you agree to the <Link to="/terms">Terms</Link> and <Link to="/privacy">Privacy Policy</Link>.</span>
       </div>
     </AuthLayout>
   );

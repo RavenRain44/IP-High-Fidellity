@@ -16,6 +16,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 import { importKey } from './crypto.ts';
+import { logError } from './log-error.ts';
 import { accessToken } from './tokens.ts';
 import { googleAdapter } from './google.ts';
 import { microsoftAdapter } from './microsoft.ts';
@@ -184,6 +185,7 @@ async function syncConnection(ctx: Ctx, conn: Conn, a: Adapter) {
       : e instanceof ProviderError && e.status === 403 ? `${a.name} refused access. Your organization may need to approve LuMaCo, or reconnect and allow access.`
       : 'Sync failed. It will try again next time.';
     console.error('sync failed', a.id, conn.id, e instanceof Error ? e.message : e);
+    if (!needsReconnect(e)) await logError(admin, `accounts-sync:${a.id}`, e, ctx.userId);
     await admin.from('integration_connections').update({ status: 'error', last_error: message, sync_started_at: null }).eq('id', conn.id);
     return { ...base, error: message };
   }
@@ -398,6 +400,7 @@ async function checkEmails(ctx: Ctx, conn: Conn, a: Adapter, parsed: NormMessage
     // Mail still syncs if the AI step fails; these messages aren't checked again.
     const msg = e instanceof Error ? e.message : 'unknown error';
     console.error('email check failed', msg);
+    await logError(ctx.admin, 'accounts-sync:email-check', e, ctx.userId);
     return { ...NO_CHECK, error: msg, note: `${when}|Promise and meeting check failed: ${msg.slice(0, 200)}` };
   }
 }

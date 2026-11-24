@@ -8,7 +8,7 @@ export type MailProvider = 'google' | 'microsoft';
 export const PROVIDER_NAME: Record<MailProvider, string> = { google: 'Google', microsoft: 'Microsoft' };
 export const isMailProvider = (p: string): p is MailProvider => p === 'google' || p === 'microsoft';
 
-async function call<T>(fn: string, body: Record<string, unknown>): Promise<{ data?: T; error?: string; status?: number; raw?: Record<string, unknown> }> {
+export async function call<T>(fn: string, body: Record<string, unknown>): Promise<{ data?: T; error?: string; status?: number; raw?: Record<string, unknown> }> {
   const { data, error } = await requireSupabase().functions.invoke(fn, { body });
   if (!error) return { data: data as T };
   if (error instanceof FunctionsHttpError) {

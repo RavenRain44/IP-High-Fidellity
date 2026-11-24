@@ -247,6 +247,77 @@ ok(await lastOut() === '2026-01-01T00:00:00.000Z', 'undoing again restores the d
 await as(users.alice, `select public.undo_audit_event($1)`, [evA]);
 ok((await as(users.alice, `select count(*)::int n from public.audit_events where undone_at is not null and id = any($1)`, [[evA, evB]])).rows[0].n === 2, 'undone changes are marked, and undoing twice is harmless');
 
+// ---- Phase 6: export, account deletion and the error log ----
+const more = {
+  erin:  { id: '00000000-0000-0000-0000-0000000000e1', email: 'erin@build.test',  name: 'Erin Leaving' },
+  frank: { id: '00000000-0000-0000-0000-0000000000f1', email: 'frank@build.test', name: 'Frank Manager' },
+  gina:  { id: '00000000-0000-0000-0000-0000000000a9', email: 'gina@build.test',  name: 'Gina Member' },
+};
+for (const u of Object.values(more)) {
+  await db.query(`insert into auth.users (id, email, raw_user_meta_data) values ($1, $2, $3)`, [u.id, u.email, { full_name: u.name }]);
+}
+const { erin, frank, gina } = more;
+const t2 = (await as(erin, `select public.create_team('Build Co') id`)).rows[0].id;
+const solo = (await as(erin, `select public.create_team('Erin Solo') id`)).rows[0].id;
+await as(erin, `insert into public.team_invites (team_id, email, role) values ($1, 'gina@build.test', 'member')`, [t2]);
+await as(gina, `select public.accept_invite((select id from public.my_invites() limit 1))`);
+await as(erin, `insert into public.team_invites (team_id, email, role) values ($1, 'frank@build.test', 'manager')`, [t2]);
+await as(frank, `select public.accept_invite((select id from public.my_invites() limit 1))`);
+const ec = Object.fromEntries((await as(erin, `insert into public.contacts (full_name, team_id, visibility) values
+  ('Erin private', null, 'private'), ('Erin shared', $1, 'team'), ('Erin team-private', $1, 'private'), ('Erin solo', $2, 'team')
+  returning full_name, id`, [t2, solo])).rows.map(r => [r.full_name, r.id]));
+await as(erin, `insert into public.contact_identities (contact_id, kind, value) values ($1, 'email', 'buyer@client.test')`, [ec['Erin shared']]);
+await as(erin, `insert into public.promises (title, team_id, visibility, contact_id) values ('Send revised quote', $1, 'team', $2)`, [t2, ec['Erin shared']]);
+await as(erin, `insert into public.interactions (team_id, visibility, contact_id, kind, occurred_at, title, source) values
+  ($1, 'team', $2, 'note', now(), 'Site visit notes', 'manual')`, [t2, ec['Erin shared']]);
+await asService(`insert into public.interactions (owner_id, team_id, visibility, contact_id, kind, occurred_at, title, source, source_ref) values
+  ($1, $2, 'team', $3, 'email', now(), 'Re: quote', 'gmail', 'erin-msg-1')`, [erin.id, t2, ec['Erin shared']]);
+await as(erin, `insert into public.meetings (team_id, visibility, kind, title) values ($1, 'team', 'notes', 'Shared meeting')`, [t2]);
+const ginaContact = (await as(gina, `insert into public.contacts (full_name, team_id, visibility) values ('Gina shared', $1, 'team') returning id`, [t2])).rows[0].id;
+const erinConn = (await asService(`insert into public.integration_connections (user_id, provider, account_email) values ($1, 'google', $2) returning id`, [erin.id, erin.email])).rows[0].id;
+await asService(`insert into public.integration_secrets (connection_id, access_token, refresh_token) values ($1, 'v1:secret-access', 'v1:secret-refresh')`, [erinConn]);
+
+const exp = (await as(erin, `select public.export_my_data() d`)).rows[0].d;
+ok(exp.contacts.length === 4 && exp.promises.length === 1 && exp.interactions.length === 2 && exp.meetings.length === 1, 'the export holds every record you own');
+ok(exp.contacts.find(c => c.full_name === 'Erin shared').identities[0]?.value === 'buyer@client.test', 'the export includes contact emails and phone numbers');
+ok(exp.connected_accounts.length === 1 && !JSON.stringify(exp).includes('secret-'), 'the export lists connected accounts but never tokens');
+ok(!JSON.stringify(exp).includes('Gina shared'), 'the export leaves out teammates\' records');
+ok(!JSON.stringify((await as(gina, `select public.export_my_data() d`)).rows[0].d).includes('Erin'), 'a teammate\'s export holds none of your records');
+
+const prev = (await as(erin, `select * from public.account_deletion_preview()`)).rows;
+const p2 = prev.find(r => r.team_id === t2), pSolo = prev.find(r => r.team_id === solo);
+ok(p2?.other_members === 2 && p2.successor_name === 'Frank Manager' && p2.shared_records === 3, 'the deletion preview names the manager who takes over and counts shared records');
+ok(pSolo?.other_members === 0, 'the deletion preview shows teams with nobody else in them');
+ok(await fails(erin, `select public.prepare_account_deletion($1)`, [erin.id]), 'users cannot run the deletion step directly');
+ok(await fails(users.alice, `select public.prepare_account_deletion($1)`, [erin.id]), 'nobody else can run the deletion step');
+
+await asService(`select public.prepare_account_deletion($1)`, [erin.id]);
+await db.query(`delete from auth.users where id = $1`, [erin.id]);   // what auth.admin.deleteUser does
+const sv = async (sql, params = []) => (await asService(sql, params)).rows;
+ok((await sv(`select role from public.team_members where team_id = $1 and user_id = $2`, [t2, frank.id]))[0]?.role === 'owner', 'the longest-standing manager becomes owner when the owner deletes their account');
+ok((await sv(`select 1 from public.teams where id = $1`, [solo])).length === 0, 'a team with nobody else in it is deleted');
+const kept = await sv(`select full_name, owner_id from public.contacts where full_name like 'Erin%'`);
+ok(kept.length === 1 && kept[0].full_name === 'Erin shared' && kept[0].owner_id === frank.id, 'team-shared contacts pass to the team owner; private ones are deleted');
+ok((await sv(`select count(*)::int n from public.contact_identities where contact_id = $1`, [ec['Erin shared']]))[0].n === 1, 'a passed-on contact keeps its email address');
+const prom = (await sv(`select owner_id, owner_label from public.promises where title = 'Send revised quote'`))[0];
+ok(prom?.owner_id === frank.id && prom.owner_label === 'Erin Leaving', 'shared promises pass on and still say who made them');
+const its = await sv(`select source, owner_id from public.interactions where contact_id = $1`, [ec['Erin shared']]);
+ok(its.length === 1 && its[0].source === 'manual' && its[0].owner_id === frank.id, 'hand-written notes pass on; synced email entries are deleted');
+ok((await sv(`select count(*)::int n from public.meetings where title = 'Shared meeting'`))[0].n === 0, 'meetings are always deleted');
+ok((await sv(`select count(*)::int n from public.integration_secrets where connection_id = $1`, [erinConn]))[0].n === 0, 'tokens and connections are deleted');
+ok((await sv(`select owner_id from public.contacts where id = $1`, [ginaContact]))[0]?.owner_id === gina.id, 'teammates\' own records are untouched');
+ok((await as(gina, `select count(*)::int n from public.contacts where id = $1`, [ec['Erin shared']])).rows[0].n === 1, 'the team still sees the passed-on contact');
+ok((await sv(`select count(*)::int n from public.profiles where id = $1`, [erin.id]))[0].n === 0, 'the profile is deleted');
+
+await as(users.bob, `select public.log_client_error('Failed for bob@acme.test with eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.abc', 'at x (app.js:1)', '/app/contacts?c=secret#x', 'v1', 'Firefox')`);
+const logged = (await sv(`select * from public.app_errors where user_id = $1`, [users.bob.id]))[0];
+ok(logged && !logged.message.includes('bob@acme.test') && logged.message.includes('[email]') && logged.message.includes('[token]'), 'logged errors have emails and tokens removed');
+ok(logged?.location === '/app/contacts', 'logged errors drop the query string');
+ok(await fails(users.bob, `select * from public.app_errors`), 'users cannot read the error log');
+ok(await fails(users.bob, `insert into public.app_errors (source, message) values ('web', 'x')`), 'users cannot write the error log directly');
+for (let i = 0; i < 40; i++) await as(users.carol, `select public.log_client_error($1)`, ['flood ' + i]);
+ok((await sv(`select count(*)::int n from public.app_errors where user_id = $1`, [users.carol.id]))[0].n === 30, 'the error log limits each user to 30 errors per 10 minutes');
+
 // Signed-out visitors (anon) get nothing.
 async function asAnon(sql) {
   await db.exec('reset role'); await db.exec("select set_config('request.jwt.claim.sub', '', false)"); await db.exec('set role anon');
@@ -260,6 +331,13 @@ ok(anonBlocked, 'signed-out visitors cannot read any table');
 let rpcBlocked = true; try { await asAnon('select * from public.my_invites()'); rpcBlocked = false; } catch {}
 try { await asAnon(`select * from public.sync_contacts_for('00000000-0000-0000-0000-00000000000a')`); rpcBlocked = false; } catch {}
 ok(rpcBlocked, 'signed-out visitors cannot call account functions');
+let anonRpc = true;
+for (const f of ['public.export_my_data()', 'public.account_deletion_preview()']) { try { await asAnon(`select * from ${f}`); anonRpc = false; } catch {} }
+ok(anonRpc, 'signed-out visitors cannot export or preview deletion');
+await asAnon(`select public.log_client_error('Sign-in page crashed')`);
+ok((await asService(`select count(*)::int n from public.app_errors where user_id is null and message = 'Sign-in page crashed'`)).rows[0].n === 1, 'errors on the sign-in page are logged too');
+let anonRead = true; try { await asAnon('select * from public.app_errors'); anonRead = false; } catch {}
+ok(anonRead, 'signed-out visitors cannot read the error log');
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll privacy checks passed');
 process.exit(failures ? 1 : 0);

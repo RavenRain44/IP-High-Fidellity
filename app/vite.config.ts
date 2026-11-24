@@ -29,4 +29,6 @@ export default defineConfig({
   plugins: [react(), serveDemo()],
   server: { port: 5173, strictPort: false },
   build: { outDir: 'dist', sourcemap: true },
+  // Which deploy an error came from (Cloudflare Pages sets the commit).
+  define: { __RELEASE__: JSON.stringify((process.env.CF_PAGES_COMMIT_SHA ?? 'local').slice(0, 7)) },
 });

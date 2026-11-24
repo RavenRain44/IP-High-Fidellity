@@ -13,6 +13,8 @@ type DeepgramResponse = {
 export async function transcribe(audio: Blob, apiKey: string): Promise<Utterance[]> {
   const params = new URLSearchParams({
     model: 'nova-3', smart_format: 'true', punctuate: 'true', diarize: 'true', utterances: 'true', language: 'en',
+    // Keep recordings out of Deepgram's Model Improvement Program (no training on customer audio).
+    mip_opt_out: 'true',
   });
   const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: 'POST',

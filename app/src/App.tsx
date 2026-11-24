@@ -12,6 +12,7 @@ import { Capture } from './pages/Capture';
 import { Meetings } from './pages/Meetings';
 import { Meeting } from './pages/Meeting';
 import { TeamDashboard } from './pages/TeamDashboard';
+import { Privacy, Terms } from './pages/Legal';
 
 export function App() {
   return (
@@ -22,6 +23,8 @@ export function App() {
       <Route path="/forgot" element={<ForgotPassword />} />
       <Route path="/reset" element={<ResetPassword />} />
       <Route path="/auth/callback" element={<AuthCallback />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
       <Route path="/app" element={<RequireAuth><AppShell /></RequireAuth>}>
         <Route index element={<Dashboard />} />
